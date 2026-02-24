@@ -24,8 +24,17 @@ cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 </head>
 <body>
 
+<body>
 <div id="map"></div>
-<div class="ui-panel"><button onclick="document.getElementById('fileIn').click()">开启彩虹记忆</button></div>
+
+<div class="ui-panel">
+<button onclick="document.getElementById('fileIn').click()">开启彩虹记忆</button>
+
+<button onclick="clearAll()" style="background: linear-gradient(135deg, #ff4b2b, #ff416c); margin-left: 10px;">重启人生版图</button>
+</div>
+
+<input type="file" id="fileIn" accept="image/*" multiple style="display:none">
+
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
@@ -45,19 +54,54 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 // --- 3. 加载历史轨迹 ---
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
+
 if (data && data.length > 0) {
 let lastPoint = null;
-data.forEach(p => {
+let i = 0;
+
+// 定义一个内部函数，用来每隔 1 秒画一个点
+function drawNext() {
+if (i >= data.length) return; // 全部画完就停止
+
+const p = data[i];
 const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
+// 落下圆点
 L.circleMarker(currentPoint, { radius: 6, color: color, fillColor: color, fillOpacity: 0.9 }).addTo(map);
 
+// 如果有前一个点，拉出动感连线
 if (lastPoint) {
 L.polyline.antPath([lastPoint, currentPoint], {
-delay: 2500, color: color, pulseColor: "#ffffff", weight: 3
+delay: 2000, color: color, pulseColor: "#ffffff", weight: 3
 }).addTo(map);
+}
+
+lastPoint = currentPoint;
+i++;
+
+// 重点：设置 1000 毫秒（1秒）后再画下一个点，形成生长动画
+setTimeout(drawNext, 1000);
+}
+
+drawNext(); // 开始动画播放
+map.fitBounds(data.map(p => [p.lat, p.lng]), {padding: [50, 50]});
+}
+}
+
+lastPoint = currentPoint;
+i++;
+
+// 重点：设置 1000 毫秒（1秒）后再画下一个点，形成生长动画
+setTimeout(drawNext, 1000);
+}
+
+drawNext(); // 开始动画播放
+map.fitBounds(data.map(p => [p.lat, p.lng]), {padding: [50, 50]});
+}
+}
+
 }
 lastPoint = currentPoint;
 });
@@ -100,6 +144,20 @@ alert("照片缺少信息。");
 });
 });
 };
+  // 清空足迹的函数
+async function clearAll() {
+if(confirm("确定要抹掉所有人生足迹吗？此操作不可逆哦！")) {
+// 去云端把数据全部擦除
+const { error } = await _db.from('footprints').delete().neq('id', 0);
+if(!error) {
+alert("已清空，开启新的人生版图！");
+location.reload(); // 刷新页面，让地图变干净
+} else {
+alert("清空失败：" + error.message);
+}
+}
+}
+
 </script>
 </body>
 </html>
