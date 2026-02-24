@@ -2,20 +2,43 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>地基测试</title>
+<title>云端足迹 - 稳扎稳打版</title>
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <style>
-body, html, #map { margin:0; height:100%; background: blue; } /* 背景设为蓝色，方便看出来亮没亮 */
+body, html, #map { margin:0; height:100%; background: #000; }
+.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); }
+button { padding: 15px 30px; background: #4facfe; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; }
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div class="ui-panel"><button onclick="alert('地基稳固，准备下一步！')">测试按钮</button></div>
+
 <script>
-// 尝试用最简单的初始化
+// 1. 这里的配置一定要填对
+const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
+
+// 2. 初始化地图
 var map = L.map('map').setView([30, 105], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-alert("如果你看到这张蓝色的地图，说明地基亮了！");
+
+// 3. 测试云端连接
+const { createClient } = supabase;
+const _db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+async function testCloud() {
+try {
+const { data, error } = await _db.from('footprints').select('*').limit(1);
+if (error) throw error;
+console.log("云端连接成功！");
+} catch (err) {
+console.log("云端还没通，但不影响地图显示:", err.message);
+}
+}
+testCloud();
 </script>
 </body>
 </html>
