@@ -35,27 +35,27 @@ font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font
 
 <script>
 // --- 1. 配置区 ---
-const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
+const SUPABASE_URL = '你的URL';
+const SUPABASE_KEY = '你的KEY';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const yearColors = {
 "2023": "#ff4e50", "2024": "#f9d423", "2025": "#00f2fe", "2026": "#a8ff78", "default": "#ffffff"
 };
 
+// 定义一个全局变量，记录地图上最后一个点，方便实时连线
+let lastGlobalPoint = null;
+
 // --- 2. 初始化地图 ---
 var map = L.map('map', { zoomControl: false }).setView([34, 108], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 3. 核心：动画播放历史轨迹 ---
+// --- 3. 动画加载历史轨迹 ---
 async function loadHistory() {
-const { data, error } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
+const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 
 if (data && data.length > 0) {
-let lastPoint = null;
 let i = 0;
-
-// 自动缩放以包含所有点
 map.fitBounds(data.map(p => [p.lat, p.lng]), {padding: [50, 50]});
 
 function drawNext() {
@@ -66,33 +66,24 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
-// 落下发光圆点
 L.circleMarker(currentPoint, { radius: 6, color: color, fillColor: color, fillOpacity: 0.9 }).addTo(map);
 
-// 如果有上一个点，拉出流光线
-if (lastPoint) {
-L.polyline.antPath([lastPoint, currentPoint], {
-delay: 2000,
-color: color,
-pulseColor: "#ffffff",
-weight: 4,
-paused: false,
-reverse: false
+if (lastGlobalPoint) {
+L.polyline.antPath([lastGlobalPoint, currentPoint], {
+delay: 2000, color: color, pulseColor: "#ffffff", weight: 4
 }).addTo(map);
 }
 
-lastPoint = currentPoint;
+lastGlobalPoint = currentPoint; // 更新全局最后一个点
 i++;
-// 每一段轨迹生长间隔 800 毫秒，更有节奏感
 setTimeout(drawNext, 800);
 }
-
 drawNext();
 }
 }
 loadHistory();
 
-// --- 4. 静默上传与实时预览 ---
+// --- 4. 【升级版】边上传，边画轨迹 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -103,22 +94,37 @@ var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GP
 if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
+const currentPoint = [latNum, lonNum];
 
-// 默默上传，不再弹出 alert
+// 1. 默默发送到云端
 const { error } = await _db.from('footprints').insert([{
 lat: latNum, lng: lonNum, img_url: "", user_id: "me"
 }]);
 
 if (!error) {
-// 实时在地图上长出一个小头像
+// 2. 实时贴上照片头像
 var tempUrl = URL.createObjectURL(file);
 var icon = L.divIcon({
 html: `<img src="${tempUrl}" class="photo-marker">`,
 className: '', iconSize: [50, 50]
 });
-L.marker([latNum, lonNum], { icon: icon }).addTo(map);
-// console.log 只是在后台记录，不会打扰你
-console.log("足迹已同步");
+L.marker(currentPoint, { icon: icon }).addTo(map);
+
+// 3. 【关键核心】如果之前有坐标，立刻拉出一根新线
+if (lastGlobalPoint) {
+const year = new Date().getFullYear().toString(); // 获取当前年份颜色
+const color = yearColors[year] || yearColors["default"];
+
+L.polyline.antPath([lastGlobalPoint, currentPoint], {
+delay: 2000, color: color, pulseColor: "#ffffff", weight: 4
+}).addTo(map);
+}
+
+// 4. 更新坐标，让下一张照片能连上这一张
+lastGlobalPoint = currentPoint;
+
+// 自动移动视角到新照片
+map.panTo(currentPoint);
 }
 }
 });
@@ -129,9 +135,13 @@ console.log("足迹已同步");
 async function clearAll() {
 if(confirm("确定要清空所有彩虹轨迹吗？")) {
 const { error } = await _db.from('footprints').delete().neq('id', 0);
-if(!error) location.reload();
+if(!error) {
+lastGlobalPoint = null; // 清空记录的点
+location.reload();
 }
 }
+}
+
 </script>
 </body>
 </html>
