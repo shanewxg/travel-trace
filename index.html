@@ -100,9 +100,18 @@ console.log("解析成功，准备上传:", latNum, lonNum);
 
 // --- 立即上传到云端 ---
 // 注意：数据库字段是 lng，我们的变量是 lonNum
-const { error } = await _db.from('footprints').insert([
-{ lat: latNum, lng: lonNum }
+// --- 找到这段代码并替换 ---
+const { error } = await _db
+.from('footprints')
+.insert([
+{
+lat: latNum,
+lng: lonNum,
+img_url: "", // 填个空字符串，防止数据库因为“没给图片地址”而报错
+user_id: "me" // 填个固定值，防止数据库因为“不知道是谁”而报错
+}
 ]);
+// -----------------------
 
 if (!error) {
 alert("同步成功！即将刷新彩虹轨迹...");
