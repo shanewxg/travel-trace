@@ -7,51 +7,102 @@
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <style>
-body { margin:0; padding:0; background: #000b1a; color: white; }
-#map { height:100vh; width:100%; }
-.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); text-align:center; }
-button { padding: 15px 30px; background: linear-gradient(135deg, #00f2fe, #4facfe); color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 0 20px rgba(79, 172, 254, 0.6); }
-.photo-marker { border: 2px solid #fff; border-radius: 8px; width:60px; height:60px; object-fit:cover; }
+body { margin:0; padding:0; background: #000b1a; color: white; font-family: sans-serif; }
+#map { height:100vh; width:100%; background: #000b1a; }
+.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); text-align:center; width: 100%; }
+button {
+padding: 15px 30px; background: linear-gradient(135deg, #00f2fe, #4facfe);
+color: white; border: none; border-radius: 30px; font-weight: bold;
+cursor: pointer; box-shadow: 0 0 20px rgba(79, 172, 254, 0.6);
+}
+.photo-marker { border: 2px solid #fff; border-radius: 8px; width:60px; height:60px; object-fit:cover; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
-<div class="ui-panel"><button onclick="document.getElementById('fileIn').click()">上传足迹 & 同步云端</button></div>
+<div class="ui-panel">
+<button onclick="handleUpload()">上传足迹 & 同步云端</button>
+</div>
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// --- 终极配置区 ---
+// --- 1. 配置区 (请准确填入你的钥匙) ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 
-// 老师提醒：这里用了标准的创建方式
-const { createClient } = supabase;
-const _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+// 使用安全的名字 _db，避免和库名冲突
+const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 先让地图出来，不要等云端数据
+// --- 2. 初始化地图 ---
 var map = L.map('map', { zoomControl: false }).setView([30, 105], 4);
 L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}').addTo(map);
 
-console.log("地图加载成功！正在连接云端...");
-
-// 异步加载云端数据，不影响地图显示
+// --- 3. 页面加载：从云端找回记忆 ---
 async function loadHistory() {
 try {
-let { data, error } = await _supabase.from('footprints').select('*');
+const { data, error } = await _db.from('footprints').select('*');
 if (error) throw error;
-if (data) data.forEach(p => addMarkerToMap(p));
-console.log("云端数据同步完成");
+if (data) {
+data.forEach(p => addMarkerToMap(p));
+console.log("成功从云端找回 " + data.length + " 个足迹");
+}
 } catch (err) {
-console.error("云端连接失败，但不影响使用本地上传:", err);
+console.error("云端连接失败，请检查 URL 和 Key:", err.message);
 }
 }
 loadHistory();
 
-// ... 后面的上传函数保持不变 ...
-</script>
+// --- 4. 功能函数：在地图上画照片 ---
+function addMarkerToMap(p) {
+var icon = L.divIcon({
+html: `<img src="${p.img_url}" class="photo-marker">`,
+className: '',
+iconSize: [60, 60],
+iconAnchor: [30, 30]
+});
+L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
+}
 
+// --- 5. 功能函数：处理上传 ---
+function handleUpload() {
+document.getElementById('fileIn').click();
+}
+
+document.getElementById('fileIn').onchange = function(e) {
+var files = Array.from(e.target.files);
+files.forEach(file => {
+EXIF.getData(file, async function() {
+var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
+var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+
+if (lat && lon) {
+var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
+var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
+
+// 暂时使用本地预览地址
+let photoUrl = URL.createObjectURL(file);
+
+// 【关键步骤】将坐标存入云端数据库
+const { error } = await _db.from('footprints').insert([
+{ lat: latNum, lng: lonNum, img_url: photoUrl, user_id: 'Teacher-User' }
+]);
+
+if (!error) {
+addMarkerToMap({ lat: latNum, lng: lonNum, img_url: photoUrl });
+console.log("足迹已同步至云端！");
+} else {
+console.error("同步失败:", error.message);
+alert("同步失败: " + error.message);
+}
+} else {
+alert("这张照片没有地理位置信息哦！");
+}
+});
+});
+};
+</script>
 </body>
 </html>
