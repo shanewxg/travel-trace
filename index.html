@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·流光足迹</title>
+<title>彩虹岁月·自由版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -20,17 +20,15 @@ background: linear-gradient(135deg, #667eea, #764ba2);
 }
 .btn-clear { background: rgba(255,255,255,0.1) !important; color: #ccc !important; border: 1px solid rgba(255,255,255,0.2) !important; }
 
-/* 照片标记：带发光渐变动画 */
 .photo-marker-icon {
 border: 3px solid white; border-radius: 12px;
 width:70px; height:70px; object-fit:cover;
 box-shadow: 0 0 20px rgba(255,255,255,0.8);
-transition: all 0.5s ease;
 animation: slideIn 0.8s ease-out;
 }
 @keyframes slideIn {
-0% { transform: translateY(20px) scale(0); opacity: 0; }
-100% { transform: translateY(0) scale(1); opacity: 1; }
+0% { transform: scale(0); opacity: 0; }
+100% { transform: scale(1); opacity: 1; }
 }
 </style>
 </head>
@@ -50,24 +48,15 @@ const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SB_URL, SB_KEY);
 
-// 更亮丽的彩虹色系
-const yearColors = {
-"2023": "#00FF7F", "2024": "#FF4500", "2025": "#FFD700", "default": "#00BFFF"
-};
+const yearColors = { "2023": "#00FF7F", "2024": "#FF4500", "2025": "#FFD700", "default": "#00BFFF" };
 
-var map = L.map('map', { zoomControl: false, zoomSnap: 0.1 }).setView([30, 110], 4);
+// 允许缩放和拖拽，不开启 zoomSnap 强制对齐
+var map = L.map('map', { zoomControl: false }).setView([30, 110], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// 核心：加粗的流光轨迹（像霓虹灯管一样）
 function drawBoldPath(start, end, color) {
 return L.polyline.antPath([start, end], {
-delay: 1500, // 流动速度快一点
-dashArray: [10, 20],
-weight: 8, // 线条加粗到 8
-color: color, // 主色调
-pulseColor: '#FFFFFF', // 呼吸闪烁色
-opacity: 0.8,
-hardwareAcceleration: true
+delay: 1500, dashArray: [10, 20], weight: 8, color: color, pulseColor: '#FFFFFF', opacity: 0.8
 }).addTo(map);
 }
 
@@ -82,36 +71,45 @@ L.marker(point, {icon: icon}).addTo(map);
 }
 }
 
-// 剧本：照片领航，轨迹尾随
+// --- 重点改进：好脾气剧本 ---
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 if (data && data.length > 0) {
 let lastPoint = null;
+
+// 1. 只在开头大场景飞一次，定个调
+map.flyTo([data[0].lat, data[0].lng], 6, { duration: 2 });
+await new Promise(r => setTimeout(r, 2200));
+
 for (let i = 0; i < data.length; i++) {
 const p = data[i];
 const currentPoint = [p.lat, p.lng];
 const color = yearColors[new Date(p.created_at).getFullYear()] || yearColors.default;
 
-// A. 镜头滑向新地点
-map.flyTo(currentPoint, 7, { duration: 1.5 });
-await new Promise(r => setTimeout(r, 1500));
+// 2. 检查当前点是否在屏幕内。如果用户正在看别处，就不去拽他的镜头
+const bounds = map.getBounds();
+if (!bounds.contains(currentPoint)) {
+// 只有当点不在视野里，才温柔地滑过去，不强行干扰
+map.panTo(currentPoint, { animate: true, duration: 1 });
+await new Promise(r => setTimeout(r, 1000));
+}
 
-// B. 照片出现（领航员）
+// 3. 照片直接弹出来，不强行等待镜头结束
 dropPhoto(currentPoint, color, p.img_url);
-await new Promise(r => setTimeout(r, 500));
 
-// C. 轨迹拖拽（连接上一站）
+// 4. 线条在后面默默“长”出来
 if (lastPoint) {
 drawBoldPath(lastPoint, currentPoint, color);
-await new Promise(r => setTimeout(r, 800));
 }
+
 lastPoint = currentPoint;
+// 缩短等待时间，让流程更丝滑，不给地图反击的机会
+await new Promise(r => setTimeout(r, 600));
 }
 }
 }
 loadHistory();
 
-// 上传逻辑（带压缩，保护数据库）
 document.getElementById('fileIn').onchange = async function(e) {
 const files = Array.from(e.target.files);
 for (const file of files) {
@@ -145,7 +143,7 @@ location.reload();
 };
 
 async function clearAll() {
-if(confirm("确定要抹去足迹，重整版图吗？")) {
+if(confirm("确定要重整江湖吗？")) {
 await _db.from('footprints').delete().neq('id', 0);
 location.reload();
 }
