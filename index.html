@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·慢放放映机</title>
+<title>彩虹岁月·慢时光</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -20,8 +20,21 @@ transition: all 0.5s;
 }
 .btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
 .btn-clear { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(5px); }
-.photo-marker { border: 2px solid white; border-radius: 50%; width:60px; height:60px; object-fit:cover; box-shadow: 0 0 20px rgba(255,255,255,0.8); animation: softPop 1.5s ease-out; }
-@keyframes softPop { from { transform: scale(0) rotate(-10deg); opacity: 0; } to { transform: scale(1) rotate(0deg); opacity: 1; } }
+
+/* 照片标记动画：更缓慢的淡入和放大 */
+.photo-marker {
+border: 3px solid white;
+border-radius: 50%;
+width:70px;
+height:70px;
+object-fit:cover;
+box-shadow: 0 0 25px rgba(255,255,255,0.6);
+animation: cinematicIn 2.5s ease-out forwards;
+}
+@keyframes cinematicIn {
+0% { transform: scale(0.5); opacity: 0; filter: blur(10px); }
+100% { transform: scale(1); opacity: 1; filter: blur(0); }
+}
 </style>
 </head>
 <body>
@@ -48,28 +61,24 @@ const yearColors = {
 
 let lastGlobalPoint = null;
 
-// --- 1. 初始世界视角 ---
-var map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
+// --- 1. 初始：极高空视角 ---
+var map = L.map('map', { zoomControl: false, scrollWheelZoom: false }).setView([20, 0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 2. 电影级俯冲加载逻辑 ---
+// --- 2. 核心：长镜头播放逻辑 ---
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 
 if (data && data.length > 0) {
-const allCoords = data.map(p => [p.lat, p.lng]);
-const bounds = L.latLngBounds(allCoords);
-const center = bounds.getCenter(); // 计算足迹的中心
-
-// 第一步：延迟 1 秒后开始慢速俯冲
+// 第一阶段：从云端缓缓降落 (持续 6 秒)
 setTimeout(() => {
-map.flyTo(center, 7, { duration: 5, easeLinearity: 0.1 }); // 5秒慢速俯冲
-}, 1000);
+map.flyTo([data[0].lat, data[0].lng], 8, { duration: 6, easeLinearity: 0.1 });
+}, 1500);
 
-// 第二步：待俯冲快结束时（6秒后），开始优雅生长
+// 第二阶段：降落完成后，开始逐个放映 (从第 8 秒开始)
 setTimeout(() => {
 let i = 0;
-function drawNext() {
+async function drawStepByStep() {
 if (i >= data.length) return;
 
 const p = data[i];
@@ -77,11 +86,17 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
+// 1. 地图先移动到这张照片的中心
+map.panTo(currentPoint, { animate: true, duration: 1.5 });
+
+// 2. 落下发光圆点
 L.circleMarker(currentPoint, { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
 
+// 3. 【重点】等待圆点落下后，再让轨迹慢慢爬过去
 if (lastGlobalPoint) {
+await new Promise(res => setTimeout(res, 1000)); // 等待 1 秒
 L.polyline.antPath([lastGlobalPoint, currentPoint], {
-delay: 4000, // 极慢的流光
+delay: 5000, // 线条内部流动速度极其缓慢
 color: color,
 pulseColor: "#ffffff",
 weight: 5
@@ -90,16 +105,17 @@ weight: 5
 
 lastGlobalPoint = currentPoint;
 i++;
-// 每一段轨迹生长间隔 3 秒，让人能细细品味
-setTimeout(drawNext, 3000);
+
+// 4. 【使劲慢】每一站停留 4.5 秒后再进行下一站
+setTimeout(drawStepByStep, 4500);
 }
-drawNext();
-}, 6000);
+drawStepByStep();
+}, 8000);
 }
 }
 loadHistory();
 
-// --- 3. 静默上传逻辑 ---
+// --- 3. 实时上传也遵循慢动作 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -113,16 +129,19 @@ const currentPoint = [latNum, lonNum];
 
 const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
 if (!error) {
+// 缓慢滑翔至新位置
+map.flyTo(currentPoint, 10, { duration: 3 });
+
+setTimeout(() => {
 var tempUrl = URL.createObjectURL(file);
-var icon = L.divIcon({ html: `<img src="${tempUrl}" class="photo-marker">`, className: '', iconSize: [60, 60] });
+var icon = L.divIcon({ html: `<img src="${tempUrl}" class="photo-marker">`, className: '', iconSize: [70, 70] });
 L.marker(currentPoint, { icon: icon }).addTo(map);
 
 if (lastGlobalPoint) {
-const year = new Date().getFullYear().toString();
-L.polyline.antPath([lastGlobalPoint, currentPoint], { delay: 4000, color: yearColors[year] || "#fff", weight: 5 }).addTo(map);
+L.polyline.antPath([lastGlobalPoint, currentPoint], { delay: 5000, color: "#fff", weight: 5 }).addTo(map);
 }
 lastGlobalPoint = currentPoint;
-map.flyTo(currentPoint, 10, { duration: 2 }); // 实时上传也带一个小俯冲
+}, 3000);
 }
 }
 });
@@ -130,7 +149,7 @@ map.flyTo(currentPoint, 10, { duration: 2 }); // 实时上传也带一个小俯�
 };
 
 async function clearAll() {
-if(confirm("确定要抹掉所有记忆吗？")) {
+if(confirm("确定要清空吗？")) {
 await _db.from('footprints').delete().neq('id', 0);
 location.reload();
 }
