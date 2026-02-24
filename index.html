@@ -131,21 +131,49 @@ await animateLine(currentPoint, nextPoint, nextColor);
 loadHistory();
 
 // 上传逻辑（保持同步）
+// --- 5. 改进版：静默实时上传 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
 EXIF.getData(file, async function() {
 var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
 var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+
 if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
 const currentPoint = [latNum, lonNum];
 
-const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
+// 1. 默默存入数据库
+const { error } = await _db.from('footprints').insert([{
+lat: latNum, lng: lonNum, img_url: "", user_id: "me"
+}]);
+
 if (!error) {
-alert("新足迹已录入，刷新即可开启时光回溯");
-location.reload();
+// 2. 立刻在地图上展示，不弹窗，不刷新
+var tempUrl = URL.createObjectURL(file);
+var icon = L.divIcon({
+html: `<img src="${tempUrl}" class="photo-marker-icon">`,
+className: '', iconSize: [70, 70]
+});
+L.marker(currentPoint, { icon: icon }).addTo(map);
+
+// 3. 如果之前有轨迹，实时连一根线过去
+if (lastGlobalPoint) {
+animateLine(lastGlobalPoint, currentPoint, "#ffffff");
+}
+lastGlobalPoint = currentPoint;
+
+// 4. 视角轻轻平移过去
+map.panTo(currentPoint, { animate: true, duration: 2 });
+}
+} else {
+console.log("这张照片没有GPS信息，跳过");
+}
+});
+});
+};
+
 }
 }
 });
