@@ -2,52 +2,84 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>我的云端足迹 - 终极版</title>
+<title>我的彩虹岁月地图</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
+
 <style>
 body, html, #map { margin:0; height:100%; background: #000b1a; }
 .ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 90%; text-align:center; }
 button {
-padding: 15px 30px; background: linear-gradient(135deg, #00f2fe, #4facfe);
+padding: 15px 30px; background: linear-gradient(135deg, #667eea, #764ba2);
 color: white; border: none; border-radius: 30px; font-weight: bold;
-cursor: pointer; box-shadow: 0 0 20px rgba(79,172,254,0.5);
+cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 }
-.photo-marker { border: 2px solid white; border-radius: 8px; width:60px; height:60px; object-fit:cover; }
+.photo-marker { border: 2px solid white; border-radius: 50%; width:50px; height:50px; object-fit:cover; box-shadow: 0 0 10px rgba(255,255,255,0.5); }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
-<div class="ui-panel"><button onclick="document.getElementById('fileIn').click()">记录此时此刻</button></div>
+<div class="ui-panel"><button onclick="document.getElementById('fileIn').click()">开启彩虹记忆</button></div>
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// --- 1. 配置（填入你的秘密钥匙） ---
+// --- 1. 配置区 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// --- 2. 初始化地图（依然使用最稳的样式） ---
+// 岁月色卡：不同年份显示不同颜色
+const yearColors = {
+"2023": "#ff4e50", // 暖红
+"2024": "#f9d423", // 金黄
+"2025": "#00f2fe", // 冰蓝
+"2026": "#a8ff78", // 嫩绿
+"default": "#ffffff"
+};
+
+// --- 2. 初始化地图 ---
 var map = L.map('map', { zoomControl: false }).setView([34, 108], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 3. 页面加载：从云端找回记忆 ---
+// --- 3. 核心逻辑：加载彩虹轨迹 ---
 async function loadHistory() {
-const { data, error } = await _db.from('footprints').select('*');
-if (data) {
+const { data, error } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
+
+if (data && data.length > 0) {
+let lastPoint = null;
+
 data.forEach(p => {
-// 如果图片是预览图，云端无法存本地地址，所以我们用一个默认光点展示
-L.marker([p.lat, p.lng]).addTo(map).bindPopup("曾经来过这里");
+const year = new Date(p.created_at).getFullYear().toString();
+const color = yearColors[year] || yearColors["default"];
+const currentPoint = [p.lat, p.lng];
+
+// 在地图上画一个带颜色的发光点
+L.circleMarker(currentPoint, {
+radius: 6, color: color, fillColor: color, fillOpacity: 0.9
+}).addTo(map).bindPopup(year + "年的足迹");
+
+// 如果有前一个点，就拉一根流光连线
+if (lastPoint) {
+L.polyline.antPath([lastPoint, currentPoint], {
+delay: 2500, dashArray: [10, 20], weight: 3,
+color: color, pulseColor: "#ffffff"
+}).addTo(map);
+}
+lastPoint = currentPoint;
 });
+
+const allPoints = data.map(p => [p.lat, p.lng]);
+map.fitBounds(allPoints, {padding: [50, 50]});
 }
 }
 loadHistory();
 
-// --- 4. 上传与解析逻辑 ---
+// --- 4. 上传与实时同步 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -59,19 +91,15 @@ if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
 
-// 1. 先在地图上展示（本地预览）
-var icon = L.divIcon({
-html: `<img src="${URL.createObjectURL(file)}" class="photo-marker">`,
-className: '', iconSize: [60, 60]
-});
-L.marker([latNum, lonNum], { icon: icon }).addTo(map);
+// 立即上传到云端
+const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum }]);
 
-// 2. 同步到云端（存经纬度）
-await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, user_id: 'Me' }]);
-
-map.flyTo([latNum, lonNum], 10);
+if (!error) {
+// 刷新页面，让彩虹线重新计算生成
+location.reload();
+}
 } else {
-alert("这张照片没有GPS信息哦，换一张试试？");
+alert("照片缺少GPS信息，无法加入彩虹轨迹。");
 }
 });
 });
