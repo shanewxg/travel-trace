@@ -2,43 +2,80 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>云端足迹 - 稳扎稳打版</title>
+<title>我的云端足迹 - 终极版</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
 <style>
-body, html, #map { margin:0; height:100%; background: #000; }
-.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); }
-button { padding: 15px 30px; background: #4facfe; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; }
+body, html, #map { margin:0; height:100%; background: #000b1a; }
+.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 90%; text-align:center; }
+button {
+padding: 15px 30px; background: linear-gradient(135deg, #00f2fe, #4facfe);
+color: white; border: none; border-radius: 30px; font-weight: bold;
+cursor: pointer; box-shadow: 0 0 20px rgba(79,172,254,0.5);
+}
+.photo-marker { border: 2px solid white; border-radius: 8px; width:60px; height:60px; object-fit:cover; }
 </style>
 </head>
 <body>
+
 <div id="map"></div>
-<div class="ui-panel"><button onclick="alert('地基稳固，准备下一步！')">测试按钮</button></div>
+<div class="ui-panel"><button onclick="document.getElementById('fileIn').click()">记录此时此刻</button></div>
+<input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// 1. 这里的配置一定要填对
+// --- 1. 配置（填入你的秘密钥匙） ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
+const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 2. 初始化地图
-var map = L.map('map').setView([30, 105], 4);
+// --- 2. 初始化地图（依然使用最稳的样式） ---
+var map = L.map('map', { zoomControl: false }).setView([34, 108], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// 3. 测试云端连接
-const { createClient } = supabase;
-const _db = createClient(SUPABASE_URL, SUPABASE_KEY);
+// --- 3. 页面加载：从云端找回记忆 ---
+async function loadHistory() {
+const { data, error } = await _db.from('footprints').select('*');
+if (data) {
+data.forEach(p => {
+// 如果图片是预览图，云端无法存本地地址，所以我们用一个默认光点展示
+L.marker([p.lat, p.lng]).addTo(map).bindPopup("曾经来过这里");
+});
+}
+}
+loadHistory();
 
-async function testCloud() {
-try {
-const { data, error } = await _db.from('footprints').select('*').limit(1);
-if (error) throw error;
-console.log("云端连接成功！");
-} catch (err) {
-console.log("云端还没通，但不影响地图显示:", err.message);
+// --- 4. 上传与解析逻辑 ---
+document.getElementById('fileIn').onchange = function(e) {
+var files = Array.from(e.target.files);
+files.forEach(file => {
+EXIF.getData(file, async function() {
+var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
+var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+
+if (lat && lon) {
+var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
+var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
+
+// 1. 先在地图上展示（本地预览）
+var icon = L.divIcon({
+html: `<img src="${URL.createObjectURL(file)}" class="photo-marker">`,
+className: '', iconSize: [60, 60]
+});
+L.marker([latNum, lonNum], { icon: icon }).addTo(map);
+
+// 2. 同步到云端（存经纬度）
+await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, user_id: 'Me' }]);
+
+map.flyTo([latNum, lonNum], 10);
+} else {
+alert("这张照片没有GPS信息哦，换一张试试？");
 }
-}
-testCloud();
+});
+});
+};
 </script>
 </body>
 </html>
