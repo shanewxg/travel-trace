@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·终极兼容版</title>
+<title>彩虹岁月·全端通车版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="stylesheet" href="https://cdn.staticfile.net/leaflet/1.9.4/leaflet.css" />
 <style>
@@ -17,10 +17,10 @@ button { padding: 12px 18px; color: white; border: none; border-radius: 20px; fo
 <body>
 
 <div class="top-ui">
-<div class="status-tag" id="musicBtn" onclick="toggleMusic()">🎶 <span id="mTxt">点我开启音乐</span></div>
-<div class="status-tag" id="loadStatus">🚦 准备就绪</div>
+<div class="status-tag" id="musicBtn" onclick="toggleMusic()">🎶 <span id="mTxt">开启音乐</span></div>
+<div class="status-tag" id="loadStatus">🚦 初始化中...</div>
 </div>
-<audio id="bgm" loop preload="auto"></audio>
+<audio id="bgm" loop preload="none"></audio>
 
 <div id="map"></div>
 
@@ -37,11 +37,11 @@ button { padding: 12px 18px; color: white; border: none; border-radius: 20px; fo
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
 
 <script>
-// ======= 配置区 =======
-const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
+// ======= 🚩 必须填入你的真实配置 =======
+const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co'; // 我从你截图里看到的
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk'; // 这个得你自己填
 const BGM_URL = 'https://cdn.pixabay.com/audio/2022/02/22/audio_d0c6ff1101.mp3';
-// =====================
+// ===================================
 
 let _db, map;
 const myID = (() => {
@@ -50,39 +50,54 @@ localStorage.setItem('my_footprint_id', id);
 return id;
 })();
 
-function init() {
-// 解决电脑黑屏：使用国内最稳的高德瓦片
+async function init() {
+const status = document.getElementById('loadStatus');
+
+// 1. 初始化地图视野 (高德底图，解决电脑黑屏)
 map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([34, 108], 4);
 L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
 subdomains: ["1", "2", "3", "4"],
 crossOrigin: true
 }).addTo(map);
 
-// 解决音乐没声音：必须用户点击后加载
-const audio = document.getElementById('bgm');
-audio.src = BGM_URL;
-
+// 2. 连接数据库
 try {
+if (typeof supabase === 'undefined') throw new Error("库文件未加载");
 _db = supabase.createClient(SB_URL, SB_KEY);
-loadData();
-} catch(e) { document.getElementById('loadStatus').innerText = "❌ 数据库配置错误"; }
+
+// 3. 设置音乐地址
+document.getElementById('bgm').src = BGM_URL;
+
+await loadData();
+} catch(e) {
+status.innerText = "❌ 启动失败，请检查配置";
+console.error(e);
+}
 }
 
 async function loadData() {
 const status = document.getElementById('loadStatus');
-status.innerText = "⏳ 正在同步...";
+status.innerText = "⏳ 正在同步轨迹...";
+
 const { data, error } = await _db.from('footprints').select('*').eq('user_id', myID).order('created_at', { ascending: true });
 
-if (error) { status.innerText = "❌ 请检查数据库权限"; return; }
-if (!data || data.length === 0) { status.innerText = "✨ 传张照片开启旅程"; return; }
+if (error) {
+status.innerText = "❌ 数据库权限错误";
+return;
+}
+
+if (!data || data.length === 0) {
+status.innerText = "✨ 传张照片开启旅程";
+return;
+}
 
 status.innerText = "🌈 正在回放...";
 let points = [];
 for (let p of data) {
 const pos = [p.lat, p.lng];
 points.push(pos);
-map.flyTo(pos, 11, { animate: true, duration: 1 });
-await new Promise(r => setTimeout(r, 1200));
+map.flyTo(pos, 11, { animate: true, duration: 1.5 });
+await new Promise(r => setTimeout(r, 1600));
 
 L.circleMarker(pos, { radius: 6, color: "#fff", fillColor: "#00BFFF", fillOpacity: 1, weight: 2 }).addTo(map);
 if (p.img_url) {
@@ -100,7 +115,6 @@ L.polyline.antPath(points, { color: "#00BFFF", weight: 5 }).addTo(map);
 status.style.display = 'none';
 }
 
-// 解决上传卡死：增加异常捕获和超时提醒
 document.getElementById('fileIn').onchange = async function(e) {
 const files = Array.from(e.target.files);
 const status = document.getElementById('loadStatus');
@@ -111,7 +125,8 @@ status.innerText = `📸 正在处理 ${i+1}/${files.length}...`;
 try {
 await processFile(files[i]);
 } catch (err) {
-alert("上传失败：可能是数据库拒绝了写入，请检查第一步的SQL设置");
+console.error(err);
+alert("上传中断，请检查网络或配置");
 break;
 }
 }
@@ -132,16 +147,21 @@ const miniData = canvas.toDataURL('image/jpeg', 0.6);
 EXIF.getData(file, async function() {
 const lat = EXIF.getTag(this, "GPSLatitude");
 const lon = EXIF.getTag(this, "GPSLongitude");
+const latR = EXIF.getTag(this, "GPSLatitudeRef");
+const lonR = EXIF.getTag(this, "GPSLongitudeRef");
+
 if (lat && lon) {
-const latN = lat[0] + lat[1]/60 + lat[2]/3600;
-const lonN = lon[0] + lon[1]/60 + lon[2]/3600;
+const latN = (lat[0] + lat[1]/60 + lat[2]/3600) * (latR === "S" ? -1 : 1);
+const lonN = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonR === "W" ? -1 : 1);
+
 const { error } = await _db.from('footprints').insert([{
 lat: latN, lng: lonN, img_url: miniData, user_id: myID
 }]);
+
 if (error) reject(error);
 else resolve();
 } else {
-alert("这张照片没有地理位置信息！");
+alert("这张照片没有GPS信息！");
 resolve();
 }
 });
@@ -156,7 +176,7 @@ function toggleMusic() {
 const audio = document.getElementById('bgm');
 const txt = document.getElementById('mTxt');
 if (audio.paused) {
-audio.play().then(() => { txt.innerText = "正在播放"; }).catch(e => alert("请先在屏幕点一下再开启音乐"));
+audio.play().then(() => { txt.innerText = "正在播放"; }).catch(e => alert("请点击页面任意处后再开启"));
 } else {
 audio.pause();
 txt.innerText = "已暂停";
@@ -164,12 +184,13 @@ txt.innerText = "已暂停";
 }
 
 async function clearAll() {
-if(confirm("确定清空吗？")) {
+if(confirm("确定清空你的足迹吗？")) {
 await _db.from('footprints').delete().eq('user_id', myID);
 location.reload();
 }
 }
 
+// 确保所有库加载完再初始化
 window.onload = init;
 </script>
 </body>
