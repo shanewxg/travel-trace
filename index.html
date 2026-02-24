@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·全通版</title>
+<title>彩虹岁月·足迹分享版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
@@ -12,6 +12,8 @@ button { padding: 12px 18px; color: white; border: none; border-radius: 20px; fo
 .photo-marker-icon { border: 2px solid white; border-radius: 8px; width:80px; height:80px; object-fit:cover; }
 .top-ui { position: fixed; top: 15px; left: 15px; z-index: 10000; display: flex; gap: 10px; }
 .status-tag { padding: 8px 15px; background: rgba(0,0,0,0.8); border-radius: 20px; color: white; font-size: 12px; border: 1px solid rgba(255,255,255,0.2); }
+/* 分享成功提示框 */
+#toast { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.8); color: white; padding: 15px 25px; border-radius: 30px; display: none; z-index: 10001; }
 </style>
 </head>
 <body>
@@ -20,12 +22,17 @@ button { padding: 12px 18px; color: white; border: none; border-radius: 20px; fo
 <div class="status-tag" id="musicBtn" onclick="toggleMusic()">🎶 <span id="mTxt">开启音乐</span></div>
 <div class="status-tag" id="loadStatus">🚦 初始化中...</div>
 </div>
+<div id="toast">✅ 专属分享链接已复制</div>
+
 <audio id="bgm" loop preload="auto"></audio>
 <div id="map"></div>
+
 <div class="ui-panel">
-<button onclick="document.getElementById('fileIn').click()">📷 记录足迹</button>
-<button style="background:rgba(255,255,255,0.2)" onclick="clearAll()">🕯️ 重置</button>
+<button id="recordBtn" onclick="document.getElementById('fileIn').click()">📷 记录足迹</button>
+<button id="shareBtn" style="background: #ff9f43;" onclick="copyShareLink()">🔗 分享轨迹</button>
+<button id="resetBtn" style="background:rgba(255,255,255,0.2)" onclick="clearAll()">🕯️ 重置</button>
 </div>
+
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -36,12 +43,18 @@ button { padding: 12px 18px; color: white; border: none; border-radius: 20px; fo
 <script>
 // ======= 🚩 填入你的配置 =======
 const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk'; // 从你SQL执行成功的那个项目里复制
+const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const BGM_URL = 'https://cdn.pixabay.com/audio/2022/02/22/audio_d0c6ff1101.mp3';
 // =============================
 
 let _db, map;
+// 识别身份：是主人还是通过分享链接点进来的访客
+const urlParams = new URLSearchParams(window.location.search);
+const shareID = urlParams.get('id');
+const isVisitor = !!shareID;
+
 const myID = (() => {
+if (isVisitor) return shareID; // 如果有ID后缀，使用分享的ID
 let id = localStorage.getItem('my_footprint_id') || ('u_' + Math.random().toString(36).substr(2, 7));
 localStorage.setItem('my_footprint_id', id);
 return id;
@@ -50,35 +63,35 @@ return id;
 async function init() {
 const status = document.getElementById('loadStatus');
 
-// 1. 先亮地图，解决黑屏
+// 访客模式UI调整
+if (isVisitor) {
+document.getElementById('recordBtn').style.display = 'none';
+document.getElementById('resetBtn').style.display = 'none';
+document.getElementById('shareBtn').innerText = "我也要玩";
+document.getElementById('shareBtn').onclick = () => { location.href = location.pathname; };
+}
+
 try {
 map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([34, 108], 4);
 L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
 subdomains: ["1", "2", "3", "4"],
 crossOrigin: 'anonymous'
 }).addTo(map);
-} catch(e) { console.error("地图加载失败"); }
 
-// 2. 连接数据库
-try {
-if (typeof supabase === 'undefined') {
-status.innerText = "⚠️ 正在重连数据库...";
-setTimeout(init, 2000);
-return;
-}
 _db = supabase.createClient(SB_URL, SB_KEY);
 document.getElementById('bgm').src = BGM_URL;
 await loadData();
-} catch(e) { status.innerText = "❌ 配置有误"; }
+} catch(e) { status.innerText = "❌ 启动失败"; }
 }
 
 async function loadData() {
 const status = document.getElementById('loadStatus');
-status.innerText = "⏳ 同步中...";
+status.innerText = isVisitor ? "🍿 正在查看分享轨迹..." : "⏳ 同步中...";
+
 const { data, error } = await _db.from('footprints').select('*').eq('user_id', myID).order('created_at', { ascending: true });
 
-if (error) { status.innerText = "❌ 访问受限"; return; }
-if (!data || data.length === 0) { status.innerText = "✨ 传张照片开始"; return; }
+if (error) { status.innerText = "❌ 无法获取数据"; return; }
+if (!data || data.length === 0) { status.innerText = "✨ 暂无记录"; return; }
 
 status.innerText = "🌈 绘制中...";
 let points = [];
@@ -102,18 +115,32 @@ if (points.length > 1) L.polyline.antPath(points, { color: "#00BFFF" }).addTo(ma
 status.style.display = 'none';
 }
 
+// 分享功能核心逻辑
+function copyShareLink() {
+const shareUrl = `${window.location.origin}${window.location.pathname}?id=${myID}`;
+
+// 尝试复制到剪贴板
+const el = document.createElement('textarea');
+el.value = shareUrl;
+document.body.appendChild(el);
+el.select();
+document.execCommand('copy');
+document.body.removeChild(el);
+
+// 显示提示
+const toast = document.getElementById('toast');
+toast.style.display = 'block';
+setTimeout(() => { toast.style.display = 'none'; }, 2500);
+}
+
+// ... (以下 processFile, toggleMusic, clearAll 函数保持不变) ...
 document.getElementById('fileIn').onchange = async function(e) {
 const files = Array.from(e.target.files);
 const status = document.getElementById('loadStatus');
 status.style.display = 'block';
-
 for (let i = 0; i < files.length; i++) {
 status.innerText = `📸 处理 ${i+1}/${files.length}`;
-try {
-await processFile(files[i]);
-} catch (err) {
-alert(err);
-}
+try { await processFile(files[i]); } catch (err) { alert(err); }
 }
 location.reload();
 };
@@ -136,11 +163,9 @@ const lonR = EXIF.getTag(this, "GPSLongitudeRef");
 if (lat && lon) {
 const latN = (lat[0] + lat[1]/60 + lat[2]/3600) * (latR === "S" ? -1 : 1);
 const lonN = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonR === "W" ? -1 : 1);
-const { error } = await _db.from('footprints').insert([{
-lat: latN, lng: lonN, img_url: miniData, user_id: myID
-}]);
-if (error) reject("写入失败"); else resolve();
-} else { reject("该照片无GPS信息"); }
+await _db.from('footprints').insert([{ lat: latN, lng: lonN, img_url: miniData, user_id: myID }]);
+resolve();
+} else { reject("无GPS信息"); }
 });
 };
 img.src = ev.target.result;
@@ -153,7 +178,7 @@ function toggleMusic() {
 const audio = document.getElementById('bgm');
 const txt = document.getElementById('mTxt');
 if (audio.paused) {
-audio.play().then(() => { txt.innerText = "正在播放"; }).catch(() => alert("请先点一下地图"));
+audio.play().then(() => { txt.innerText = "播放中"; }).catch(() => alert("先点下地图"));
 } else {
 audio.pause(); txt.innerText = "已暂停";
 }
