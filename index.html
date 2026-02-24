@@ -25,7 +25,7 @@ button { padding: 15px 30px; background: linear-gradient(135deg, #00f2fe, #4facf
 <script>
 // --- 配置区 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
-const SUPABASE_KEY = 'postgresql://postgres:[YOUR-PASSWORD]@db.pzgyvnpbnvxciruqflya.supabase.co:5432/postgres';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 var map = L.map('map', { zoomControl: false }).setView([30, 105], 4);
