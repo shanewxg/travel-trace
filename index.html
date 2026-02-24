@@ -19,7 +19,7 @@ font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font
 }
 .btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
 .btn-clear { background: linear-gradient(135deg, #ff4b2b, #ff416c); }
-.photo-marker { border: 2px solid white; border-radius: 50%; width:50px; height:50px; object-fit:cover; box-shadow: 0 0 10px rgba(255,255,255,0.8); }
+.photo-marker { border: 2px solid white; border-radius: 50%; width:50px; height:50px; object-fit:cover; box-shadow: 0 0 10px rgba(255,255,255,0.8); transition: all 0.5s; }
 </style>
 </head>
 <body>
@@ -35,8 +35,8 @@ font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font
 
 <script>
 // --- 1. 配置区 ---
-const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
+const SUPABASE_URL = '你的URL';
+const SUPABASE_KEY = '你的KEY';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const yearColors = {
@@ -47,13 +47,16 @@ const yearColors = {
 var map = L.map('map', { zoomControl: false }).setView([34, 108], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 3. 动画加载历史轨迹 ---
+// --- 3. 核心：动画播放历史轨迹 ---
 async function loadHistory() {
 const { data, error } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 
 if (data && data.length > 0) {
 let lastPoint = null;
 let i = 0;
+
+// 自动缩放以包含所有点
+map.fitBounds(data.map(p => [p.lat, p.lng]), {padding: [50, 50]});
 
 function drawNext() {
 if (i >= data.length) return;
@@ -63,26 +66,33 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
+// 落下发光圆点
 L.circleMarker(currentPoint, { radius: 6, color: color, fillColor: color, fillOpacity: 0.9 }).addTo(map);
 
+// 如果有上一个点，拉出流光线
 if (lastPoint) {
 L.polyline.antPath([lastPoint, currentPoint], {
-delay: 2000, color: color, pulseColor: "#ffffff", weight: 3
+delay: 2000,
+color: color,
+pulseColor: "#ffffff",
+weight: 4,
+paused: false,
+reverse: false
 }).addTo(map);
 }
 
 lastPoint = currentPoint;
 i++;
-setTimeout(drawNext, 1000); // 每一秒跑出一段
+// 每一段轨迹生长间隔 800 毫秒，更有节奏感
+setTimeout(drawNext, 800);
 }
 
 drawNext();
-map.fitBounds(data.map(p => [p.lat, p.lng]), {padding: [50, 50]});
 }
 }
 loadHistory();
 
-// --- 4. 上传逻辑 ---
+// --- 4. 静默上传与实时预览 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -94,34 +104,32 @@ if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
 
+// 默默上传，不再弹出 alert
 const { error } = await _db.from('footprints').insert([{
 lat: latNum, lng: lonNum, img_url: "", user_id: "me"
 }]);
 
 if (!error) {
+// 实时在地图上长出一个小头像
 var tempUrl = URL.createObjectURL(file);
 var icon = L.divIcon({
 html: `<img src="${tempUrl}" class="photo-marker">`,
 className: '', iconSize: [50, 50]
 });
 L.marker([latNum, lonNum], { icon: icon }).addTo(map);
-alert("同步成功！");
+// console.log 只是在后台记录，不会打扰你
+console.log("足迹已同步");
 }
-} else {
-alert("照片缺少GPS信息");
 }
 });
 });
 };
 
-// --- 5. 重启/删除逻辑 ---
+// --- 5. 清空逻辑 ---
 async function clearAll() {
-if(confirm("确定要抹掉所有人生足迹吗？")) {
+if(confirm("确定要清空所有彩虹轨迹吗？")) {
 const { error } = await _db.from('footprints').delete().neq('id', 0);
-if(!error) {
-alert("已清空，开启新的人生版图！");
-location.reload();
-}
+if(!error) location.reload();
 }
 }
 </script>
