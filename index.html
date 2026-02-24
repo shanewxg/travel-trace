@@ -82,28 +82,42 @@ loadHistory();
 // --- 4. 上传与实时同步 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
+
 files.forEach(file => {
+// 关键：我们要确保 EXIF 里的逻辑能顺利调用云端
 EXIF.getData(file, async function() {
-var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
-var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+var lat = EXIF.getTag(this, "GPSLatitude");
+var lon = EXIF.getTag(this, "GPSLongitude");
+var latRef = EXIF.getTag(this, "GPSLatitudeRef");
+var lonRef = EXIF.getTag(this, "GPSLongitudeRef");
 
 if (lat && lon) {
+// 计算经纬度数字
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
 
-// 立即上传到云端
-const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum }]);
+console.log("解析成功，准备上传:", latNum, lonNum);
+
+// --- 立即上传到云端 ---
+// 注意：数据库字段是 lng，我们的变量是 lonNum
+const { error } = await _db.from('footprints').insert([
+{ lat: latNum, lng: lonNum }
+]);
 
 if (!error) {
-// 刷新页面，让彩虹线重新计算生成
+alert("同步成功！即将刷新彩虹轨迹...");
 location.reload();
+} else {
+console.error("云端存储失败:", error.message);
+alert("同步失败，请检查数据库连接");
 }
 } else {
-alert("照片缺少GPS信息，无法加入彩虹轨迹。");
+alert("这张照片没有GPS信息（可能是微信导出的），请换一张手机拍摄的原图试试！");
 }
 });
 });
 };
+
 </script>
 </body>
 </html>
