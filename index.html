@@ -2,21 +2,21 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>回归最初的地图</title>
+<title>亮屏行动</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-/* 1. 核心修复：必须给 body 和 map 100% 高度，否则地图高度为0，就会黑屏 */
-body, html, #map { margin: 0; padding: 0; height: 100%; width: 100%; background: #000b1a; }
-.ui-panel { position: fixed; z-index: 1000; bottom: 30px; left: 50%; transform: translateX(-50%); }
-button { padding: 15px 30px; cursor: pointer; border-radius: 50px; border: none; background: #ff416c; color: white; font-weight: bold; }
-.photo-frame { border: 3px solid white; width: 60px; height: 60px; object-fit: cover; }
+/* 强制地图撑满全屏，背景设为深蓝色，防止白屏报错 */
+body, html, #map { margin: 0; padding: 0; height: 100vh; width: 100vw; background: #000b1a; }
+.ui-panel { position: fixed; z-index: 9999; bottom: 20px; left: 50%; transform: translateX(-50%); }
+button { padding: 15px 30px; cursor: pointer; border-radius: 50px; border: none; background: #ff416c; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 0 20px rgba(255,65,108,0.5); }
+.pic { border: 2px solid white; width: 50px; height: 50px; object-fit: cover; }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 <div class="ui-panel">
-<button onclick="document.getElementById('fileIn').click()">📷 上传照片</button>
+<button onclick="document.getElementById('fileIn').click()">点这里上传照片</button>
 </div>
 <input type="file" id="fileIn" accept="image/*" style="display:none">
 
@@ -25,58 +25,43 @@ button { padding: 15px 30px; cursor: pointer; border-radius: 50px; border: none;
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
 
 <script>
-// ======= 3. 只需要填这两个，确保引号保留 =======
+// 🚩 只要改这里！确保引号里不要有空格
 const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
-// ==========================================
 
-// 初始化数据库
 const _db = supabase.createClient(SB_URL, SB_KEY);
 
-// 4. 初始化地图（如果这里报错，页面就会全黑）
-var map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
-
-// 使用暗色滤镜地图
+// 初始化地图：只要这一行跑通，屏幕就一定会亮
+var map = L.map('map', { zoomControl: false }).setView([30, 110], 4);
 L.tileLayer('https://{s}.tile.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-// 加载已有照片
-async function load() {
+// 加载数据
+async function init() {
 const { data } = await _db.from('footprints').select('*');
-if (data) {
-data.forEach(item => {
-const icon = L.divIcon({
-html: `<img src="${item.img_url}" class="photo-frame">`,
-iconSize: [60, 60]
-});
-L.marker([item.lat, item.lng], {icon: icon}).addTo(map);
+if(data) {
+data.forEach(p => {
+const icon = L.divIcon({ html: `<img src="${p.img_url}" class="pic">`, iconSize: [50, 50] });
+L.marker([p.lat, p.lng], {icon: icon}).addTo(map);
 });
 }
 }
-load();
+init();
 
-// 原始上传逻辑（一张一张来，最稳）
+// 上传一张试试
 document.getElementById('fileIn').onchange = function(e) {
 const file = e.target.files[0];
-if(!file) return;
-
 const reader = new FileReader();
 reader.onload = function(ev) {
-const base64Img = ev.target.result;
 EXIF.getData(file, async function() {
 const lat = EXIF.getTag(this, "GPSLatitude");
 const lon = EXIF.getTag(this, "GPSLongitude");
-
 if (lat && lon) {
 const latN = lat[0] + lat[1]/60 + lat[2]/3600;
 const lonN = lon[0] + lon[1]/60 + lon[2]/3600;
-
-// 直接存，不压缩，找回之前的感觉
-await _db.from('footprints').insert([
-{ lat: latN, lng: lonN, img_url: base64Img, user_id: 'me' }
-]);
+await _db.from('footprints').insert([{ lat: latN, lng: lonN, img_url: ev.target.result, user_id: 'me' }]);
 location.reload();
 } else {
-alert("检测不到照片的地理位置，请确保是原图上传。");
+alert("照片没带地址，换一张试试！");
 }
 });
 };
