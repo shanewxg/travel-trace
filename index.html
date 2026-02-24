@@ -1,8 +1,9 @@
+
 <!DOCTYPE html>
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·慢时光修复版</title>
+<title>彩虹岁月·慢时光稳健版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -11,104 +12,89 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
 
 <style>
-[span_2](start_span)/* 强制撑开，防止黑屏[span_2](end_span) */
+/* 核心：确保高度 100% 且背景色为深色，防止亮瞎眼 */
 body, html, #map { margin:0; height:100%; width:100%; background: #000b1a; }
 .ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 95%; text-align:center; display: flex; justify-content: center; gap: 15px; }
-button { padding: 14px 25px; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px; transition: all 0.5s; }
-.btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
-.btn-clear { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); color: #ccc; }
+button { padding: 14px 25px; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px; transition: all 0.5s; background: linear-gradient(135deg, #667eea, #764ba2); }
+.btn-clear { background: rgba(255,255,255,0.1) !important; color: #ccc !important; }
 
-[span_3](start_span)/* 修复照片显示[span_3](end_span) */
-.photo-marker-icon { border: 3px solid white; border-radius: 10px; width:60px; height:60px; object-fit:cover; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
+/* 照片样式 */
+.photo-marker-icon { border: 3px solid white; border-radius: 50%; width:70px; height:70px; object-fit:cover; box-shadow: 0 0 20px rgba(255,255,255,0.8); }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 <div class="ui-panel">
-<button class="btn-upload" onclick="document.getElementById('fileIn').click()">✨ 批量上传照片</button>
+<button onclick="document.getElementById('fileIn').click()">✨ 添加足迹</button>
 <button class="btn-clear" onclick="clearAll()">🕯️ 重置版图</button>
 </div>
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-[span_4](start_span)// --- 这里填入你的真实信息[span_4](end_span) ---
+// --- 请填入你的真实信息 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-[span_5](start_span)// 年份颜色[span_5](end_span)
-const yearColors = { "2024": "#8B4513", "2025": "#FFFF00", "default": "#FFFFFF" };
-
-[span_6](start_span)// 初始化地图[span_6](end_span)
-var map = L.map('map', { zoomControl: false }).setView([30, 110], 4);
+[span_2](start_span)// 初始化地图[span_2](end_span)
+var map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
+[span_3](start_span)// 使用最稳的底图图层[span_3](end_span)
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-[span_7](start_span)// 动画线条[span_7](end_span)
-async function animateLine(start, end, color) {
-return new Promise((resolve) => {
-const line = L.polyline.antPath([start, end], { color: color, weight: 5 }).addTo(map);
-setTimeout(resolve, 1000);
-});
-}
-
-[span_8](start_span)// 核心显示：掉落照片[span_8](end_span)
-function dropPhoto(point, color, imgUrl) {
-L.circleMarker(point, { radius: 6, color: color }).addTo(map);
+[span_4](start_span)// 核心助手：掉落照片[span_4](end_span)
+function dropPhoto(point, imgUrl) {
 if (imgUrl) {
 const icon = L.divIcon({
 html: `<img src="${imgUrl}" class="photo-marker-icon">`,
-iconSize: [60, 60], className: ''
+iconSize: [70, 70],
+className: ''
 });
 L.marker(point, {icon: icon}).addTo(map);
+} else {
+L.circleMarker(point, { radius: 8, color: "#00f2fe" }).addTo(map);
 }
 }
 
-[span_9](start_span)// 加载历史[span_9](end_span)
+[span_5](start_span)// 加载历史[span_5](end_span)
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
-if (data && data.length > 0) {
-let lastPoint = null;
-for (let p of data) {
-const currentPoint = [p.lat, p.lng];
-const color = yearColors[new Date(p.created_at).getFullYear()] || yearColors.default;
-if (lastPoint) await animateLine(lastPoint, currentPoint, color);
-dropPhoto(currentPoint, color, p.img_url); [span_10](start_span)// 传入数据库存的照片数据[span_10](end_span)
-lastPoint = currentPoint;
-}
+if (data) {
+data.forEach(p => {
+dropPhoto([p.lat, p.lng], p.img_url);
+});
 }
 }
 loadHistory();
 
-[span_11](start_span)// --- 补全上传逻辑：真正读取照片并上传[span_11](end_span) ---
-document.getElementById('fileIn').onchange = async function(e) {
-const files = Array.from(e.target.files);
-for (const file of files) {
-await new Promise(resolve => {
+[span_6](start_span)// 修复上传：真正读取文件[span_6](end_span)
+document.getElementById('fileIn').onchange = function(e) {
+var files = Array.from(e.target.files);
+files.forEach(file => {
 const reader = new FileReader();
 reader.onload = function(ev) {
-const base64Data = ev.target.result; // 这里读取了照片数据
+const base64Data = ev.target.result; // 这里拿到了照片
 EXIF.getData(file, async function() {
-const lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
-const latR = EXIF.getTag(this, "GPSLatitudeRef"), lonR = EXIF.getTag(this, "GPSLongitudeRef");
+var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
+var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
 if (lat && lon) {
-const latN = (lat[0] + lat[1]/60 + lat[2]/3600) * (latR === "S" ? -1 : 1);
-const lonN = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonR === "W" ? -1 : 1);
-[span_12](start_span)// 将 base64Data 存入 img_url，不再传空字符串[span_12](end_span)
-await _db.from('footprints').insert([{ lat: latN, lng: lonN, img_url: base64Data, user_id: "me" }]);
+var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
+var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
+
+[span_7](start_span)// 插入数据库[span_7](end_span)
+await _db.from('footprints').insert([{
+lat: latNum, lng: lonNum, img_url: base64Data, user_id: "me"
+}]);
+location.reload();
 }
-resolve();
 });
 };
 reader.readAsDataURL(file);
 });
-}
-alert("照片已成功同步至足迹！");
-location.reload();
 };
 
 async function clearAll() {
-if(confirm("确定要重启人生版图吗？")) {
+if(confirm("确定要重启吗？")) {
 await _db.from('footprints').delete().neq('id', 0);
 location.reload();
 }
