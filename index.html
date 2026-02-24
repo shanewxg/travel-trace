@@ -41,7 +41,6 @@ animation: cinematicIn 2s ease-out forwards;
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// --- 1. 配置区（请务必填入你的 Key） ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -54,11 +53,10 @@ const yearColors = {
 
 let lastGlobalPoint = null;
 
-// --- 2. 初始化地图 ---
 var map = L.map('map', { zoomControl: false, scrollWheelZoom: true }).setView([20, 0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 3. 核心：极慢速生长函数 ---
+// --- 核心助手：极慢速生长线条，且返回一个“画完了”的信号 ---
 async function animateLine(start, end, color) {
 return new Promise((resolve) => {
 const steps = 200;
@@ -79,19 +77,26 @@ growingLine.setLatLngs(tempCoords);
 
 if (currentStep >= steps) {
 clearInterval(interval);
-resolve();
+resolve(); // 线画完了，告诉主程序可以放下一张照片了
 }
-}, 50); // 每50毫秒一步，约10秒走完一段
+}, 50);
 });
 }
 
-// --- 4. 自动加载播放 ---
+// --- 核心助手：掉落照片 ---
+function dropPhoto(point, color) {
+// 这里我们先放圆点，代表足迹已到达
+L.circleMarker(point, { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
+// 如果有照片（目前是本地模拟，由于刷新会丢，所以我们先让圆点作为标记）
+// 如果你希望在这里显示照片，可以在此处加入 L.marker 逻辑
+}
+
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 
 if (data && data.length > 0) {
-// 俯冲开场
-map.flyTo([data[0].lat, data[0].lng], 7, { duration: 8, easeLinearity: 0.1 });
+// 1. 缓缓俯冲至起点
+map.flyTo([data[0].lat, data[0].lng], 7, { duration: 8 });
 await new Promise(res => setTimeout(res, 9000));
 
 for (let i = 0; i < data.length; i++) {
@@ -100,23 +105,32 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
+// --- 动作 A：摄像机对焦 ---
 map.panTo(currentPoint, { animate: true, duration: 3 });
 await new Promise(res => setTimeout(res, 1000));
 
-L.circleMarker(currentPoint, { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
+// --- 动作 B：当前足迹点亮（照片/圆点出现） ---
+dropPhoto(currentPoint, color);
 
-if (lastGlobalPoint) {
-await animateLine(lastGlobalPoint, currentPoint, color);
+// 让观众看 3 秒这张照片，然后再出发
+await new Promise(res => setTimeout(res, 3000));
+
+// --- 动作 C：开始延伸向下一个点的轨迹 ---
+if (i < data.length - 1) { // 如果不是最后一个点
+const nextP = data[i+1];
+const nextYear = new Date(nextP.created_at).getFullYear().toString();
+const nextColor = yearColors[nextYear] || yearColors["default"];
+const nextPoint = [nextP.lat, nextP.lng];
+
+// 【关键】必须等线画完了，循环才会进入下一轮去放下一张照片
+await animateLine(currentPoint, nextPoint, nextColor);
 }
-
-lastGlobalPoint = currentPoint;
-await new Promise(res => setTimeout(res, 4000));
 }
 }
 }
 loadHistory();
 
-// --- 5. 上传逻辑 ---
+// 上传逻辑（保持同步）
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -130,17 +144,8 @@ const currentPoint = [latNum, lonNum];
 
 const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
 if (!error) {
-map.flyTo(currentPoint, 10, { duration: 5 });
-setTimeout(async () => {
-var tempUrl = URL.createObjectURL(file);
-var icon = L.divIcon({ html: `<img src="${tempUrl}" class="photo-marker-icon">`, className: '', iconSize: [70, 70] });
-L.marker(currentPoint, { icon: icon }).addTo(map);
-
-if (lastGlobalPoint) {
-await animateLine(lastGlobalPoint, currentPoint, "#ffffff");
-}
-lastGlobalPoint = currentPoint;
-}, 5000);
+alert("新足迹已录入，刷新即可开启时光回溯");
+location.reload();
 }
 }
 });
@@ -154,5 +159,6 @@ location.reload();
 }
 }
 </script>
+
 </body>
 </html>
