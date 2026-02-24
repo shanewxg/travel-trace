@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·航拍灵魂版</title>
+<title>彩虹岁月·追踪摄影版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -11,15 +11,7 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
 
 <style>
-/* 核心：通过倾斜容器模拟“俯冲”视角 */
-body, html { margin:0; height:100%; width:100%; background: #000b1a; overflow: hidden; }
-#map {
-height: 100%; width: 100%;
-/* 这里的视角倾斜是灵魂 */
-transform: perspective(800px) rotateX(5deg);
-transform-origin: bottom;
-}
-
+body, html, #map { margin:0; height:100%; width:100%; background: #000b1a; }
 .ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); display: flex; gap: 15px; }
 button {
 padding: 14px 25px; color: white; border: none; border-radius: 30px;
@@ -28,24 +20,27 @@ background: linear-gradient(135deg, #667eea, #764ba2);
 }
 .btn-clear { background: rgba(255,255,255,0.1) !important; color: #ccc !important; }
 
-/* 照片标记：带发光和浮动感 */
+/* 增强照片显示：不再抖动，而是清晰弹出 */
 .photo-marker-icon {
 border: 3px solid white; border-radius: 12px;
-width:70px; height:70px; object-fit:cover;
-box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-transition: transform 0.3s ease;
+width:120px; height:120px; object-fit:cover; /* 加大照片尺寸 */
+box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+animation: dropIn 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+transform-origin: bottom;
+}
+@keyframes dropIn {
+0% { transform: translateY(-50px) scale(0); opacity: 0; }
+100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
-
 <div class="ui-panel">
 <button onclick="document.getElementById('fileIn').click()">📷 注入足迹</button>
 <button class="btn-clear" onclick="clearAll()">🕯️ 重启江湖</button>
 </div>
-
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
@@ -55,29 +50,27 @@ const _db = supabase.createClient(SB_URL, SB_KEY);
 
 const yearColors = { "2024": "#FF4500", "2025": "#FFD700", "default": "#00BFFF" };
 
-// 初始化地图
-var map = L.map('map', { zoomControl: false, scrollWheelZoom: true }).setView([30, 110], 4);
+var map = L.map('map', { zoomControl: false }).setView([30, 110], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// 轨迹函数：加粗且带流动感
 function drawPath(start, end, color) {
 return L.polyline.antPath([start, end], {
-delay: 1000, dashArray: [10, 20], weight: 8, color: color, pulseColor: '#FFFFFF', opacity: 0.7
+delay: 800, dashArray: [10, 20], weight: 10, color: color, pulseColor: '#FFFFFF', opacity: 0.8
 }).addTo(map);
 }
 
-// 放置照片
 function dropPhoto(point, color, imgUrl) {
+L.circleMarker(point, { radius: 8, color: color, fillColor: "#fff", fillOpacity: 1 }).addTo(map);
 if (imgUrl) {
 const icon = L.divIcon({
 html: `<img src="${imgUrl}" class="photo-marker-icon">`,
-iconSize: [70, 70], className: ''
+iconSize: [120, 120], iconAnchor: [60, 120] // 锚点设在底部，像钉子一样扎在地图上
 });
-return L.marker(point, {icon: icon}).addTo(map);
+L.marker(point, {icon: icon}).addTo(map);
 }
 }
 
-// --- 核心：航拍跟随剧本 ---
+// --- 追踪剧本：深度俯冲 + 先落地后连线 ---
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 if (data && data.length > 0) {
@@ -88,31 +81,33 @@ const p = data[i];
 const currentPoint = [p.lat, p.lng];
 const color = yearColors[new Date(p.created_at).getFullYear()] || yearColors.default;
 
-// 1. 镜头平滑“滑翔”过去，不强行中断用户操作
-map.flyTo(currentPoint, map.getZoom(), {
-animate: true,
-duration: 2,
-easeLinearity: 0.25
-});
+// 1. 深度俯冲：缩放等级拉到 12 (街道级)
+map.flyTo(currentPoint, 12, { animate: true, duration: 2 });
 
-// 2. 等待镜头滑翔到一半时，照片先行“着陆”
-await new Promise(r => setTimeout(r, 1000));
+// 2. 等待镜头降落完毕
+await new Promise(r => setTimeout(r, 2200));
+
+// 3. 照片落地
 dropPhoto(currentPoint, color, p.img_url);
 
-// 3. 轨迹紧随其后“长”出来
+// 4. 轨迹随后从上一站拉过来
 if (lastPoint) {
 drawPath(lastPoint, currentPoint, color);
+await new Promise(r => setTimeout(r, 1000));
 }
 
 lastPoint = currentPoint;
-// 每站停留一会儿，展示照片
-await new Promise(r => setTimeout(r, 1200));
 }
+
+// 最后给个全景
+setTimeout(() => {
+map.flyToBounds(data.map(p => [p.lat, p.lng]), { padding: [50, 50] });
+}, 3000);
 }
 }
 loadHistory();
 
-// 上传逻辑
+// 上传与清空逻辑保持不变
 document.getElementById('fileIn').onchange = async function(e) {
 const files = Array.from(e.target.files);
 for (const file of files) {
@@ -122,7 +117,7 @@ reader.onload = function(ev) {
 const img = new Image();
 img.onload = async function() {
 const canvas = document.createElement('canvas');
-const size = 500;
+const size = 600;
 canvas.width = size; canvas.height = size;
 canvas.getContext('2d').drawImage(img, 0, 0, size, size);
 const miniData = canvas.toDataURL('image/jpeg', 0.8);
