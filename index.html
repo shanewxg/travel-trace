@@ -1,25 +1,15 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·全端兼容版</title>
+<title>彩虹岁月·终极兼容版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-
+<link rel="stylesheet" href="https://cdn.staticfile.net/leaflet/1.9.4/leaflet.css" />
 <style>
 body, html, #map { margin:0; height:100%; width:100%; background: #000b1a; overflow: hidden; }
 .ui-panel { position:fixed; z-index:9999; bottom:20px; left:50%; transform:translateX(-50%); display: flex; gap: 8px; width: 95%; justify-content: center; }
-button {
-padding: 10px 14px; color: white; border: none; border-radius: 20px;
-font-weight: bold; background: linear-gradient(135deg, #667eea, #764ba2);
-font-size: 12px; white-space: nowrap; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-}
+button { padding: 10px 14px; color: white; border: none; border-radius: 20px; font-weight: bold; background: linear-gradient(135deg, #667eea, #764ba2); font-size: 12px; white-space: nowrap; box-shadow: 0 4px 15px rgba(0,0,0,0.3); cursor: pointer; }
 .btn-clear { background: rgba(255,255,255,0.1) !important; color: #ccc !important; }
 .photo-marker-icon { border: 2px solid white; border-radius: 8px; width:90px; height:90px; object-fit:cover; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
 .top-ui { position: fixed; top: 15px; left: 15px; z-index: 10000; display: flex; gap: 10px; }
@@ -33,9 +23,11 @@ font-size: 12px; white-space: nowrap; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 
 <div class="top-ui">
 <div class="status-tag" id="musicBtn">🎶 <span id="mTxt">播放音乐</span></div>
-<div class="status-tag" id="loadStatus" style="display:none;">🚀 正在同步...</div>
+<div class="status-tag" id="loadStatus" style="display:none;">🚀 同步中...</div>
 </div>
-<audio id="bgm" loop></audio> <div id="map"></div>
+<audio id="bgm" loop></audio>
+
+<div id="map"></div>
 
 <div class="ui-panel">
 <button onclick="document.getElementById('fileIn').click()">📷 彩虹光影</button>
@@ -50,55 +42,85 @@ font-size: 12px; white-space: nowrap; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
 <h3 style="margin:0; color: #333;">足迹快照</h3>
 <img id="shareImg">
 <button id="dlBtn" style="width:100%; padding: 12px; background: #667eea; color:white; border:none; border-radius:10px;">保存图片</button>
-<p style="color:#999; font-size:12px; margin-top:15px;" onclick="closeShare()">点击此处关闭</p>
+<p style="color:#999; font-size:12px; margin-top:15px; cursor:pointer;" onclick="closeShare()">点击此处关闭</p>
 </div>
 </div>
+
+<script src="https://cdn.staticfile.net/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdn.staticfile.net/supabase/2.39.7/supabase-js.js"></script>
+<script src="https://cdn.staticfile.net/exif-js/2.3.0/exif.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
+<script src="https://cdn.staticfile.net/html2canvas/1.4.1/html2canvas.min.js"></script>
 
 <script>
-// ======= 🚩 填入信息（确保 URL 以 https:// 开头） =======
+// ======= 配置信息 =======
 const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
-const BGM_URL = '你的音乐链接.mp3';
+const BGM_URL = '你的音乐.mp3';
+// ========================
 
-// 建立 ID 机制
-function getMyID() {
+let _db, map;
+const myID = (() => {
 let id = localStorage.getItem('my_footprint_id');
 if (!id) {
 id = 'user_' + Math.random().toString(36).substr(2, 9);
 localStorage.setItem('my_footprint_id', id);
 }
 return id;
-}
-const myID = getMyID();
+})();
+
 const yearColors = { "2024": "#FF4500", "2025": "#FFD700", "default": "#00BFFF" };
 
-let _db;
-let map;
-
-// 初始化一切
-function initAll() {
+// 核心初始化
+function startApp() {
+console.log("正在初始化地图...");
 try {
-// 1. 初始化数据库
-_db = supabase.createClient(SB_URL, SB_KEY);
-
-// 2. 初始化地图
+// 1. 初始化地图对象（即便没有数据也要先渲染底图）
 map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([30, 110], 4);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// 使用更兼容的底图 URL (强制 https)
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-crossOrigin: true
-}).addTo(map);
+// 2. 连接数据库
+if (typeof supabase !== 'undefined') {
+_db = supabase.createClient(SB_URL, SB_KEY);
+loadHistory();
+} else {
+console.error("Supabase 库加载失败");
+}
 
-// 3. 音乐设置
+// 3. 音乐
 const bgm = document.getElementById('bgm');
 bgm.src = BGM_URL;
-
-// 4. 开始加载数据
-loadHistory();
 } catch (e) {
-console.error("初始化失败:", e);
-alert("地图加载失败，请检查网络或配置");
+console.error("启动失败:", e);
 }
+}
+
+async function loadHistory() {
+const status = document.getElementById('loadStatus');
+status.style.display = 'block';
+try {
+const { data, error } = await _db.from('footprints').select('*').eq('user_id', myID).order('created_at', { ascending: true });
+status.style.display = 'none';
+if (error || !data || data.length === 0) return;
+
+let lastPoint = null;
+for (let i = 0; i < data.length; i++) {
+const p = data[i];
+const currentPoint = [p.lat, p.lng];
+const color = yearColors[new Date(p.created_at).getFullYear()] || yearColors.default;
+
+map.flyTo(currentPoint, 11, { animate: true, duration: 0.8 });
+await new Promise(r => setTimeout(r, 900));
+dropPhoto(currentPoint, color, p.img_url);
+
+if (lastPoint) {
+L.polyline.antPath([lastPoint, currentPoint], { delay: 600, weight: 7, color: color, pulseColor: '#FFFFFF', opacity: 0.8 }).addTo(map);
+}
+lastPoint = currentPoint;
+await new Promise(r => setTimeout(r, 500));
+}
+map.flyToBounds(data.map(p => [p.lat, p.lng]), { padding: [40, 40] });
+} catch (e) { console.error("数据加载异常:", e); }
 }
 
 function dropPhoto(point, color, imgUrl) {
@@ -112,50 +134,8 @@ L.marker(point, {icon: icon}).addTo(map);
 }
 }
 
-async function loadHistory() {
-const status = document.getElementById('loadStatus');
-status.style.display = 'block';
-
-try {
-const { data, error } = await _db.from('footprints')
-.select('*')
-.eq('user_id', myID)
-.order('created_at', { ascending: true });
-
-status.style.display = 'none';
-if (error) throw error;
-if (!data || data.length === 0) return;
-
-let lastPoint = null;
-for (let i = 0; i < data.length; i++) {
-const p = data[i];
-const currentPoint = [p.lat, p.lng];
-const color = yearColors[new Date(p.created_at).getFullYear()] || yearColors.default;
-
-map.flyTo(currentPoint, 11, { animate: true, duration: 1.0 });
-await new Promise(r => setTimeout(r, 600));
-dropPhoto(currentPoint, color, p.img_url);
-
-if (lastPoint) {
-L.polyline.antPath([lastPoint, currentPoint], {
-delay: 600, weight: 7, color: color, pulseColor: '#FFFFFF', opacity: 0.8
-}).addTo(map);
-}
-lastPoint = currentPoint;
-await new Promise(r => setTimeout(r, 800));
-}
-map.flyToBounds(data.map(p => [p.lat, p.lng]), { padding: [40, 40] });
-} catch (err) {
-console.error("加载数据失败:", err);
-status.innerText = "加载失败，请重试";
-}
-}
-
-// 页面加载完成后才启动
-window.onload = initAll;
-
-const mBtn = document.getElementById('musicBtn');
-mBtn.onclick = () => {
+// 按钮逻辑...（保持与上版一致）
+document.getElementById('musicBtn').onclick = () => {
 const bgm = document.getElementById('bgm');
 if (bgm.paused) { bgm.play(); document.getElementById('mTxt').innerText = "暂停"; }
 else { bgm.pause(); document.getElementById('mTxt').innerText = "播放"; }
@@ -180,9 +160,7 @@ const latR = EXIF.getTag(this, "GPSLatitudeRef"), lonR = EXIF.getTag(this, "GPSL
 if (lat && lon) {
 const latN = (lat[0] + lat[1]/60 + lat[2]/3600) * (latR === "S" ? -1 : 1);
 const lonN = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonR === "W" ? -1 : 1);
-await _db.from('footprints').insert([{
-lat: latN, lng: lonN, img_url: miniData, user_id: myID
-}]);
+await _db.from('footprints').insert([{ lat: latN, lng: lonN, img_url: miniData, user_id: myID }]);
 }
 resolve();
 });
@@ -196,7 +174,7 @@ location.reload();
 };
 
 async function clearAll() {
-if(confirm("确定要重启【你自己的】江湖吗？")) {
+if(confirm("确定清空吗？")) {
 await _db.from('footprints').delete().eq('user_id', myID);
 location.reload();
 }
@@ -209,17 +187,18 @@ const imgTag = document.getElementById('shareImg');
 imgTag.style.display = 'none';
 setTimeout(() => {
 html2canvas(document.body, { useCORS: true }).then(canvas => {
-const url = canvas.toDataURL('image/png');
-imgTag.src = url;
+imgTag.src = canvas.toDataURL('image/png');
 imgTag.style.display = 'block';
 document.getElementById('dlBtn').onclick = () => {
-const a = document.createElement('a');
-a.href = url; a.download = '彩虹足迹.png'; a.click();
+const a = document.createElement('a'); a.href = imgTag.src; a.download = '足迹.png'; a.click();
 };
 });
 }, 600);
 }
 function closeShare() { document.getElementById('shareModal').style.display = 'none'; }
+
+// 启动！
+startApp();
 </script>
 </body>
 </html>
