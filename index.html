@@ -1,72 +1,162 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>亮屏行动</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<meta charset="UTF-8" />
+<title>我的旅行足迹-星光流光版</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
 <style>
-/* 强制地图撑满全屏，背景设为深蓝色，防止白屏报错 */
-body, html, #map { margin: 0; padding: 0; height: 100vh; width: 100vw; background: #000b1a; }
-.ui-panel { position: fixed; z-index: 9999; bottom: 20px; left: 50%; transform: translateX(-50%); }
-button { padding: 15px 30px; cursor: pointer; border-radius: 50px; border: none; background: #ff416c; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 0 20px rgba(255,65,108,0.5); }
-.pic { border: 2px solid white; width: 50px; height: 50px; object-fit: cover; }
+body { margin:0; padding:0; background: #f0f2f5; font-family: sans-serif; }
+#map { height:100vh; width:100%; background: #f0f2f5; }
+
+.btn-box { position:fixed; z-index:9999; bottom:50px; left:50%; transform:translateX(-50%); }
+button {
+padding: 18px 45px; background: linear-gradient(135deg, #1890ff, #722ed1);
+color: white; border: none; border-radius: 50px; font-size: 18px; font-weight: bold;
+cursor: pointer; box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: 0.3s;
+}
+button:hover { transform: scale(1.05); filter: brightness(1.1); }
+
+/* 照片标记：增加了你想要的“发光”感 */
+.photo-marker {
+border: 3px solid #fff; border-radius: 12px;
+/* 蓝色和紫色的重叠阴影，营造发光氛围 */
+box-shadow: 0 0 15px rgba(24, 144, 255, 0.5), 0 5px 15px rgba(0,0,0,0.2);
+width:80px; height:80px; object-fit:cover;
+animation: starPulse 2s infinite ease-in-out; /* 持续的呼吸感 */
+}
+
+@keyframes starPulse {
+0%, 100% { transform: scale(1); box-shadow: 0 0 15px rgba(24, 144, 255, 0.5); }
+50% { transform: scale(1.05); box-shadow: 0 0 25px rgba(114, 46, 209, 0.7); }
+}
+
+/* 跑步小球 */
+.custom-runner {
+width: 18px; height: 18px; background: #fff;
+border: 4px solid #1890ff; border-radius: 50%; box-shadow: 0 0 20px #1890ff;
+}
 </style>
 </head>
 <body>
 
 <div id="map"></div>
-<div class="ui-panel">
-<button onclick="document.getElementById('fileIn').click()">点这里上传照片</button>
+<div class="btn-box" id="controlPanel">
+<button onclick="document.getElementById('fileIn').click()">上传照片，见证奇迹</button>
 </div>
-<input type="file" id="fileIn" accept="image/*" style="display:none">
-
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
+<input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// 🚩 只要改这里！确保引号里不要有空格
-const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
-const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
+// 1. 初始化上帝视角 (上帝看地球)
+var map = L.map('map', { zoomControl: false, zoomSnap: 0.1 }).setView([25, 30], 2.5);
 
-const _db = supabase.createClient(SB_URL, SB_KEY);
+L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+subdomains: ["1", "2", "3", "4"],
+keepBuffer: 10
+}).addTo(map);
 
-// 初始化地图：只要这一行跑通，屏幕就一定会亮
-var map = L.map('map', { zoomControl: false }).setView([30, 110], 4);
-L.tileLayer('https://{s}.tile.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
+var runnerMarker = null;
 
-// 加载数据
-async function init() {
-const { data } = await _db.from('footprints').select('*');
-if(data) {
-data.forEach(p => {
-const icon = L.divIcon({ html: `<img src="${p.img_url}" class="pic">`, iconSize: [50, 50] });
-L.marker([p.lat, p.lng], {icon: icon}).addTo(map);
-});
-}
-}
-init();
-
-// 上传一张试试
 document.getElementById('fileIn').onchange = function(e) {
-const file = e.target.files[0];
-const reader = new FileReader();
-reader.onload = function(ev) {
-EXIF.getData(file, async function() {
-const lat = EXIF.getTag(this, "GPSLatitude");
-const lon = EXIF.getTag(this, "GPSLongitude");
+var files = Array.from(e.target.files);
+var photoData = [];
+var loaded = 0;
+document.getElementById('controlPanel').style.display = 'none';
+
+files.forEach(function(file) {
+EXIF.getData(file, function() {
+var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
+var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
+var timeStr = EXIF.getTag(this, "DateTime");
 if (lat && lon) {
-const latN = lat[0] + lat[1]/60 + lat[2]/3600;
-const lonN = lon[0] + lon[1]/60 + lon[2]/3600;
-await _db.from('footprints').insert([{ lat: latN, lng: lonN, img_url: ev.target.result, user_id: 'me' }]);
-location.reload();
-} else {
-alert("照片没带地址，换一张试试！");
+var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
+var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
+photoData.push({ lat: latNum, lng: lonNum, url: URL.createObjectURL(file),
+time: timeStr ? new Date(timeStr.replace(/:/g, '-').replace(' ', 'T')) : new Date() });
+}
+loaded++;
+if (loaded === files.length) {
+photoData.sort((a, b) => a.time - b.time);
+if(photoData.length > 0) startCinematicFlow(photoData);
 }
 });
+});
 };
-reader.readAsDataURL(file);
-};
+
+async function startCinematicFlow(data) {
+// 停留看一眼世界地图，同时后台预加载
+await new Promise(r => setTimeout(r, 2000));
+
+// 第一跳：先跳到照片大致区域（全景预热）
+var bounds = data.map(p => [p.lat, p.lng]);
+await new Promise(r => {
+map.once('moveend', r);
+map.fitBounds(bounds, { padding: [100, 100], duration: 1.5 });
+});
+
+await new Promise(r => setTimeout(r, 800));
+
+// 第二跳：深度俯冲到第一个点
+await new Promise(r => {
+map.once('moveend', r);
+map.flyTo([data[0].lat, data[0].lng], 14, { duration: 2.5, easeLinearity: 0.2 });
+});
+
+await runJourney(data);
+}
+
+async function runJourney(data) {
+var routePoints = [];
+var runnerIcon = L.divIcon({ html: `<div class="custom-runner"></div>`, className: '', iconSize: [18, 18], iconAnchor: [9, 9] });
+runnerMarker = L.marker([data[0].lat, data[0].lng], { icon: runnerIcon, zIndexOffset: 1000 }).addTo(map);
+
+for (let i = 0; i < data.length; i++) {
+let p = data[i];
+let currentPos = [p.lat, p.lng];
+routePoints.push(currentPos);
+
+if (i > 0) {
+let prevPos = routePoints[i-1];
+await new Promise(resolve => {
+let startTime = null;
+let duration = 1200;
+function animate(currentTime) {
+if (!startTime) startTime = currentTime;
+let elapsed = currentTime - startTime;
+let t = Math.min(elapsed / duration, 1);
+let easeT = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+let pos = [prevPos[0] + (currentPos[0] - prevPos[0]) * easeT, prevPos[1] + (currentPos[1] - prevPos[1]) * easeT];
+runnerMarker.setLatLng(pos);
+map.panTo(pos, { animate: false });
+
+// 渐变色轨迹
+let hue = 200 + (i / data.length) * 60;
+L.polyline([prevPos, pos], {
+color: `hsl(${hue}, 100%, 60%)`,
+weight: 6, opacity: 0.8, lineCap: 'round'
+}).addTo(map);
+
+if (t < 1) requestAnimationFrame(animate);
+else resolve();
+}
+requestAnimationFrame(animate);
+});
+}
+
+// 掉落发光的照片
+let photoIcon = L.divIcon({
+html: `<img src="${p.url}" class="photo-marker">`,
+className: '', iconSize: [80, 80], iconAnchor: [40, 40]
+});
+L.marker(currentPos, { icon: photoIcon }).addTo(map);
+await new Promise(r => setTimeout(r, 800));
+}
+
+// 结尾回拉
+map.flyToBounds(routePoints, { padding: [120, 120], duration: 2.5 });
+}
 </script>
 </body>
 </html>
