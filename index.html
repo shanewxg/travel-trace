@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·时光放映机</title>
+<title>彩虹岁月·剧场版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -13,12 +13,11 @@
 <style>
 body, html, #map { margin:0; height:100%; background: #000b1a; }
 .ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 95%; text-align:center; display: flex; justify-content: center; gap: 15px; }
-button {
-padding: 14px 25px; color: white; border: none; border-radius: 30px;
-font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px;
-}
+button { padding: 14px 25px; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px; }
 .btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
 .btn-clear { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(5px); color: #ccc; }
+/* 强制照片初次加载时不显示，直到被脚本激活 */
+.photo-marker-hidden { display: none; }
 .photo-marker-icon {
 border: 3px solid white; border-radius: 50%; width:70px; height:70px;
 object-fit:cover; box-shadow: 0 0 20px rgba(255,255,255,0.8);
@@ -30,16 +29,13 @@ animation: cinematicIn 2s ease-out forwards;
 <body>
 
 <div id="map"></div>
-
 <div class="ui-panel">
 <button class="btn-upload" onclick="document.getElementById('fileIn').click()">✨ 添加足迹</button>
 <button class="btn-clear" onclick="clearAll()">🕯️ 重置版图</button>
 </div>
-
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// --- 1. 配置区 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -51,12 +47,10 @@ const yearColors = {
 };
 
 let lastGlobalPoint = null;
-
-// --- 2. 初始化地图 ---
 var map = L.map('map', { zoomControl: false, scrollWheelZoom: true }).setView([20, 0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 3. 极慢速生长线条函数 ---
+// --- 核心：极慢速生长函数 ---
 async function animateLine(start, end, color) {
 return new Promise((resolve) => {
 const steps = 200;
@@ -74,19 +68,20 @@ tempCoords.push([lat, lng]);
 growingLine.setLatLngs(tempCoords);
 if (currentStep >= steps) {
 clearInterval(interval);
-resolve();
+resolve(); // 只有线画完，才通知下一步
 }
 }, 50);
 });
 }
 
-// --- 4. 自动播放历史 ---
+// --- 修正后的加载逻辑：确保“接力” ---
 async function loadHistory() {
 try {
 const { data, error } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 if (error) throw error;
 
 if (data && data.length > 0) {
+// 1. 俯冲至第一站
 map.flyTo([data[0].lat, data[0].lng], 7, { duration: 8 });
 await new Promise(res => setTimeout(res, 9000));
 
@@ -96,23 +91,26 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
-map.panTo(currentPoint, { animate: true, duration: 3 });
-L.circleMarker(currentPoint, { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
-
+// --- 如果有上一个点，先画线，等线画完再显示当前点 ---
 if (lastGlobalPoint) {
 await animateLine(lastGlobalPoint, currentPoint, color);
 }
-lastGlobalPoint = currentPoint;
+
+// --- 只有线到达了，才点亮圆点/显示照片 ---
+map.panTo(currentPoint, { animate: true, duration: 2 });
+L.circleMarker(currentPoint, { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
+
+// 停留一会儿，给人看清楚这一站的时间
 await new Promise(res => setTimeout(res, 4000));
+
+lastGlobalPoint = currentPoint;
 }
 }
-} catch (e) {
-console.error("加载失败:", e);
-}
+} catch (e) { console.error(e); }
 }
 loadHistory();
 
-// --- 5. 静默上传逻辑 ---
+// 上传逻辑
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -123,36 +121,25 @@ if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
 const currentPoint = [latNum, lonNum];
-
 const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
 if (!error) {
+// 实时上传也遵循：先飞过去，再落点
+map.flyTo(currentPoint, 10, { duration: 4 });
+setTimeout(() => {
 var tempUrl = URL.createObjectURL(file);
 var icon = L.divIcon({ html: `<img src="${tempUrl}" class="photo-marker-icon">`, className: '', iconSize: [70, 70] });
 L.marker(currentPoint, { icon: icon }).addTo(map);
-if (lastGlobalPoint) {
-animateLine(lastGlobalPoint, currentPoint, "#ffffff");
-}
-lastGlobalPoint = currentPoint;
-map.panTo(currentPoint, { animate: true, duration: 2 });
+}, 4500);
 }
 }
 });
 });
 };
 
-// --- 6. 修正版重置函数 ---
 async function clearAll() {
-if(confirm("确定要重启人生版图吗？这会抹掉所有足迹。")) {
-// 使用 eq('user_id', 'me') 更加精准地删除
+if(confirm("确定要重启人生版图吗？")) {
 const { error } = await _db.from('footprints').delete().eq('user_id', 'me');
-if(!error) {
-// 强制等待一小会儿，确保数据库操作彻底完成再刷新
-setTimeout(() => {
-window.location.href = window.location.pathname + '?t=' + Date.now();
-}, 500);
-} else {
-alert("重置遇到点小问题，请稍后重试");
-}
+if(!error) setTimeout(() => { window.location.reload(); }, 500);
 }
 }
 </script>
