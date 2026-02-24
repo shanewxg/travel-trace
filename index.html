@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·高光时刻</title>
+<title>彩虹岁月·高光足迹版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -13,20 +13,20 @@
 <style>
 body, html, #map { margin:0; height:100%; background: #000b1a; }
 .ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 95%; text-align:center; display: flex; justify-content: center; gap: 15px; }
-button { padding: 14px 25px; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px; }
+button { padding: 14px 25px; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px; transition: all 0.3s; }
 .btn-upload { background: linear-gradient(135deg, #ff416c, #ff4b2b); }
 .btn-clear { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(5px); color: #ccc; }
 
 /* 拍立得照片样式 */
 .photo-frame {
 border: 4px solid white;
-border-bottom: 12px solid white;
-border-radius: 4px;
+border-bottom: 15px solid white;
+border-radius: 2px;
 width: 80px;
 height: 80px;
 object-fit: cover;
-box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-animation: popIn 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+animation: popIn 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 @keyframes popIn { 0% { transform: scale(0) rotate(-15deg); opacity: 0; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
 </style>
@@ -41,6 +41,7 @@ animation: popIn 1s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
+// --- 1. 配置区 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -53,14 +54,14 @@ const yearColors = {
 var map = L.map('map', { zoomControl: false, scrollWheelZoom: true }).setView([20, 0], 3);
 L.tileLayer('https://{s}.tile.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-// --- 醒目的霓虹轨迹绘制 ---
+// --- 2. 醒目的霓虹轨迹绘制函数 ---
 async function drawNeonPath(start, end, color) {
 return new Promise((resolve) => {
-const steps = 40;
+const steps = 50;
 let current = 0;
-// 增加线条粗度 (weight: 8) 和光晕感 (pulseColor)
+// 加粗到 10，增加发光感
 const path = L.polyline.antPath([start, start], {
-delay: 1500, color: color, pulseColor: "#ffffff", weight: 8, dashArray: [10, 20]
+delay: 1200, color: color, pulseColor: "#ffffff", weight: 10, dashArray: [10, 20]
 }).addTo(map);
 
 const timer = setInterval(() => {
@@ -69,14 +70,15 @@ const lat = start[0] + (end[0] - start[0]) * (current / steps);
 const lng = start[1] + (end[1] - start[1]) * (current / steps);
 path.setLatLngs([start, [lat, lng]]);
 if (current >= steps) { clearInterval(timer); resolve(); }
-}, 30);
+}, 25);
 });
 }
 
+// --- 3. 历史播放逻辑 ---
 async function loadHistory() {
 try {
-const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
-if (!data || data.length === 0) return;
+const { data, error } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
+if (error || !data || data.length === 0) return;
 
 map.flyTo([data[0].lat, data[0].lng], 8, { duration: 3 });
 await new Promise(r => setTimeout(r, 3500));
@@ -89,22 +91,23 @@ const pos = [item.lat, item.lng];
 
 if (lastPos) await drawNeonPath(lastPos, pos, color);
 
-// 轨迹到达：展示照片
 map.panTo(pos, { animate: true });
+
+// 显示照片或带颜色的占位框
 const iconHtml = item.img_url
 ? `<img src="${item.img_url}" class="photo-frame">`
 : `<div class="photo-frame" style="background:${color}; display:flex; align-items:center; justify-content:center; color:white;">${year}</div>`;
 
 L.marker(pos, { icon: L.divIcon({ html: iconHtml, className: '', iconSize: [80, 80] }) }).addTo(map);
 
-await new Promise(r => setTimeout(r, 1500));
+await new Promise(r => setTimeout(r, 1200));
 lastPos = pos;
 }
-} catch (e) { console.error(e); }
+} catch (e) { console.error("加载失败:", e); }
 }
 loadHistory();
 
-// --- 图片压缩并转存逻辑 ---
+// --- 4. 上传并压缩图片逻辑 ---
 document.getElementById('fileIn').onchange = function(e) {
 const files = Array.from(e.target.files);
 files.forEach(file => {
@@ -112,12 +115,12 @@ const reader = new FileReader();
 reader.onload = function(event) {
 const img = new Image();
 img.onload = function() {
-// 压缩图片防止数据库塞满
 const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
+// 统一压缩到 300 像素提高速度和存储效率
 canvas.width = 300; canvas.height = 300;
 ctx.drawImage(img, 0, 0, 300, 300);
-const base64 = canvas.toDataURL('image/jpeg', 0.7);
+const base64 = canvas.toDataURL('image/jpeg', 0.6);
 
 EXIF.getData(file, async function() {
 const lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
@@ -126,9 +129,8 @@ if (lat && lon) {
 const latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 const lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
 
-// 关键：把 base64 图片存入 img_url
 await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: base64, user_id: "me" }]);
-location.reload();
+window.location.reload();
 }
 });
 };
@@ -139,7 +141,7 @@ reader.readAsDataURL(file);
 };
 
 async function clearAll() {
-if(confirm("确定清空吗？")) {
+if(confirm("确定要重启人生版图吗？")) {
 await _db.from('footprints').delete().eq('user_id', 'me');
 window.location.reload();
 }
