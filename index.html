@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·时光足迹终极版</title>
+<title>彩虹岁月·流光足迹</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -18,16 +18,20 @@ padding: 14px 25px; color: white; border: none; border-radius: 30px;
 font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4);
 background: linear-gradient(135deg, #667eea, #764ba2);
 }
-/* 重启江湖键的特殊样式 */
 .btn-clear { background: rgba(255,255,255,0.1) !important; color: #ccc !important; border: 1px solid rgba(255,255,255,0.2) !important; }
 
+/* 照片标记：带发光渐变动画 */
 .photo-marker-icon {
-border: 3px solid white; border-radius: 8px;
-width:60px; height:60px; object-fit:cover;
-box-shadow: 0 0 15px rgba(255,255,255,0.5);
-animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+border: 3px solid white; border-radius: 12px;
+width:70px; height:70px; object-fit:cover;
+box-shadow: 0 0 20px rgba(255,255,255,0.8);
+transition: all 0.5s ease;
+animation: slideIn 0.8s ease-out;
 }
-@keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
+@keyframes slideIn {
+0% { transform: translateY(20px) scale(0); opacity: 0; }
+100% { transform: translateY(0) scale(1); opacity: 1; }
+}
 </style>
 </head>
 <body>
@@ -35,41 +39,50 @@ animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 <div id="map"></div>
 
 <div class="ui-panel">
-<button onclick="document.getElementById('fileIn').click()">📷 批量上传</button>
+<button onclick="document.getElementById('fileIn').click()">📷 注入足迹</button>
 <button class="btn-clear" onclick="clearAll()">🕯️ 重启江湖</button>
 </div>
 
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// --- 填入你的信息 ---
 const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SB_URL, SB_KEY);
 
-const yearColors = { "2024": "#FF8C00", "2025": "#FFFF00", "default": "#00f2fe" };
+// 更亮丽的彩虹色系
+const yearColors = {
+"2023": "#00FF7F", "2024": "#FF4500", "2025": "#FFD700", "default": "#00BFFF"
+};
 
-var map = L.map('map', { zoomControl: false }).setView([30, 110], 4);
+var map = L.map('map', { zoomControl: false, zoomSnap: 0.1 }).setView([30, 110], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
+// 核心：加粗的流光轨迹（像霓虹灯管一样）
+function drawBoldPath(start, end, color) {
+return L.polyline.antPath([start, end], {
+delay: 1500, // 流动速度快一点
+dashArray: [10, 20],
+weight: 8, // 线条加粗到 8
+color: color, // 主色调
+pulseColor: '#FFFFFF', // 呼吸闪烁色
+opacity: 0.8,
+hardwareAcceleration: true
+}).addTo(map);
+}
+
 function dropPhoto(point, color, imgUrl) {
-L.circleMarker(point, { radius: 6, color: color, fillColor: color, fillOpacity: 0.9 }).addTo(map);
+L.circleMarker(point, { radius: 7, color: color, fillColor: "#fff", fillOpacity: 1, weight: 3 }).addTo(map);
 if (imgUrl) {
 const icon = L.divIcon({
 html: `<img src="${imgUrl}" class="photo-marker-icon">`,
-iconSize: [60, 60], className: ''
+iconSize: [70, 70], className: ''
 });
 L.marker(point, {icon: icon}).addTo(map);
 }
 }
 
-function drawFlowLine(start, end, color) {
-return L.polyline.antPath([start, end], {
-delay: 2000, dashArray: [10, 20], weight: 4, color: color, pulseColor: '#FFFFFF'
-}).addTo(map);
-}
-
-// 灵魂剧本：照片先弹，轨迹后跟
+// 剧本：照片领航，轨迹尾随
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 if (data && data.length > 0) {
@@ -79,14 +92,17 @@ const p = data[i];
 const currentPoint = [p.lat, p.lng];
 const color = yearColors[new Date(p.created_at).getFullYear()] || yearColors.default;
 
-// 1. 照片先现
-dropPhoto(currentPoint, color, p.img_url);
-map.panTo(currentPoint, { animate: true });
-await new Promise(r => setTimeout(r, 1200));
+// A. 镜头滑向新地点
+map.flyTo(currentPoint, 7, { duration: 1.5 });
+await new Promise(r => setTimeout(r, 1500));
 
-// 2. 轨迹随后连接
+// B. 照片出现（领航员）
+dropPhoto(currentPoint, color, p.img_url);
+await new Promise(r => setTimeout(r, 500));
+
+// C. 轨迹拖拽（连接上一站）
 if (lastPoint) {
-drawFlowLine(lastPoint, currentPoint, color);
+drawBoldPath(lastPoint, currentPoint, color);
 await new Promise(r => setTimeout(r, 800));
 }
 lastPoint = currentPoint;
@@ -95,7 +111,7 @@ lastPoint = currentPoint;
 }
 loadHistory();
 
-// 批量上传
+// 上传逻辑（带压缩，保护数据库）
 document.getElementById('fileIn').onchange = async function(e) {
 const files = Array.from(e.target.files);
 for (const file of files) {
@@ -128,17 +144,10 @@ reader.readAsDataURL(file);
 location.reload();
 };
 
-// --- 重启江湖：清空所有轨迹和照片 ---
 async function clearAll() {
-if(confirm("确定要抹去所有痕迹，重启江湖吗？")) {
-// 删除数据库中所有记录
-const { error } = await _db.from('footprints').delete().neq('id', 0);
-if(!error) {
-alert("江湖已清空，请重新开启旅程。");
+if(confirm("确定要抹去足迹，重整版图吗？")) {
+await _db.from('footprints').delete().neq('id', 0);
 location.reload();
-} else {
-alert("重启失败，请检查网络。");
-}
 }
 }
 </script>
