@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>我的彩虹岁月地图</title>
+<title>彩虹岁月放映机</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -11,22 +11,30 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
 
 <style>
-body, html, #map { margin:0; height:100%; background: #000b1a; }
+body, html, #map { margin:0; height:100%; background: #000b1a; font-family: "Microsoft YaHei", sans-serif; }
 .ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 95%; text-align:center; display: flex; justify-content: center; gap: 10px; }
 button {
 padding: 12px 20px; color: white; border: none; border-radius: 25px;
 font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 14px;
+transition: all 0.3s;
 }
+button:active { transform: scale(0.9); }
 .btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
 .btn-clear { background: linear-gradient(135deg, #ff4b2b, #ff416c); }
-.photo-marker { border: 2px solid white; border-radius: 50%; width:50px; height:50px; object-fit:cover; box-shadow: 0 0 10px rgba(255,255,255,0.8); transition: all 0.5s; }
+
+/* 音乐按钮样式 */
+.music-control { position: fixed; top: 20px; right: 20px; z-index: 10000; background: rgba(255,255,255,0.2); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; backdrop-filter: blur(5px); }
+
+.photo-marker { border: 2px solid white; border-radius: 50%; width:50px; height:50px; object-fit:cover; box-shadow: 0 0 15px rgba(255,255,255,0.8); animation: popIn 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55); }
+@keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="ui-panel">
+<div class="music-control" onclick="toggleMusic()" id="musicBtn">🎵</div>
+<audio id="bgm" loop src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"></audio> <div class="ui-panel">
 <button class="btn-upload" onclick="document.getElementById('fileIn').click()">开启彩虹记忆</button>
 <button class="btn-clear" onclick="clearAll()">重启人生版图</button>
 </div>
@@ -34,30 +42,41 @@ font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// --- 1. 配置区 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// --- 1. 严格的岁月色卡分配 ---
 const yearColors = {
-"2023": "#ff4e50", "2024": "#f9d423", "2025": "#00f2fe", "2026": "#a8ff78", "default": "#ffffff"
+"2018": "#FFB6C1", // 粉色
+"2019": "#1E90FF", // 蓝色
+"2020": "#800080", // 紫色
+"2021": "#90EE90", // 浅绿色
+"2022": "#008000", // 绿色
+"2023": "#556B2F", // 棕绿色
+"2024": "#8B4513", // 棕色
+"2025": "#FFFF00", // 黄色
+"2026": "#FF8C00", // 橙色
+"2027": "#FF0000", // 红色
+"default": "#FFFFFF"
 };
 
-// 定义一个全局变量，记录地图上最后一个点，方便实时连线
 let lastGlobalPoint = null;
 
-// --- 2. 初始化地图 ---
-var map = L.map('map', { zoomControl: false }).setView([34, 108], 4);
+// --- 2. 初始化地图（开场高空视角） ---
+var map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 3. 动画加载历史轨迹 ---
+// --- 3. 丝滑加载与俯冲动画 ---
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 
 if (data && data.length > 0) {
-let i = 0;
-map.fitBounds(data.map(p => [p.lat, p.lng]), {padding: [50, 50]});
+// 第一步：先缓缓俯冲到足迹区域
+map.flyTo([data[0].lat, data[0].lng], 5, { duration: 3 });
 
+setTimeout(() => {
+let i = 0;
 function drawNext() {
 if (i >= data.length) return;
 
@@ -66,64 +85,67 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
-L.circleMarker(currentPoint, { radius: 6, color: color, fillColor: color, fillOpacity: 0.9 }).addTo(map);
+// 落下发光点
+L.circleMarker(currentPoint, { radius: 7, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
 
 if (lastGlobalPoint) {
+// 丝滑生长的线条
 L.polyline.antPath([lastGlobalPoint, currentPoint], {
-delay: 2000, color: color, pulseColor: "#ffffff", weight: 4
+delay: 3000, // 调慢流光速度
+color: color,
+pulseColor: "#ffffff",
+weight: 4
 }).addTo(map);
 }
 
-lastGlobalPoint = currentPoint; // 更新全局最后一个点
+lastGlobalPoint = currentPoint;
 i++;
-setTimeout(drawNext, 800);
+// 每一段生长间隔拉长到 1.5 秒，让眼睛跟得上
+setTimeout(drawNext, 1500);
 }
 drawNext();
+}, 3500); // 等俯冲动画做完再开始画线
 }
 }
 loadHistory();
 
-// --- 4. 【升级版】边上传，边画轨迹 ---
+// --- 4. 音乐控制 ---
+function toggleMusic() {
+const bgm = document.getElementById('bgm');
+const btn = document.getElementById('musicBtn');
+if (bgm.paused) {
+bgm.play();
+btn.style.animation = "spin 3s linear infinite";
+btn.innerText = "💿";
+} else {
+bgm.pause();
+btn.style.animation = "";
+btn.innerText = "🎵";
+}
+}
+
+// --- 5. 上传与实时连线 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
 EXIF.getData(file, async function() {
 var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
 var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
-
 if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
 const currentPoint = [latNum, lonNum];
 
-// 1. 默默发送到云端
-const { error } = await _db.from('footprints').insert([{
-lat: latNum, lng: lonNum, img_url: "", user_id: "me"
-}]);
-
+const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
 if (!error) {
-// 2. 实时贴上照片头像
 var tempUrl = URL.createObjectURL(file);
-var icon = L.divIcon({
-html: `<img src="${tempUrl}" class="photo-marker">`,
-className: '', iconSize: [50, 50]
-});
+var icon = L.divIcon({ html: `<img src="${tempUrl}" class="photo-marker">`, className: '', iconSize: [50, 50] });
 L.marker(currentPoint, { icon: icon }).addTo(map);
-
-// 3. 【关键核心】如果之前有坐标，立刻拉出一根新线
 if (lastGlobalPoint) {
-const year = new Date().getFullYear().toString(); // 获取当前年份颜色
-const color = yearColors[year] || yearColors["default"];
-
-L.polyline.antPath([lastGlobalPoint, currentPoint], {
-delay: 2000, color: color, pulseColor: "#ffffff", weight: 4
-}).addTo(map);
+const year = new Date().getFullYear().toString();
+L.polyline.antPath([lastGlobalPoint, currentPoint], { delay: 3000, color: yearColors[year] || "#fff", weight: 4 }).addTo(map);
 }
-
-// 4. 更新坐标，让下一张照片能连上这一张
 lastGlobalPoint = currentPoint;
-
-// 自动移动视角到新照片
 map.panTo(currentPoint);
 }
 }
@@ -131,17 +153,16 @@ map.panTo(currentPoint);
 });
 };
 
-// --- 5. 清空逻辑 ---
 async function clearAll() {
-if(confirm("确定要清空所有彩虹轨迹吗？")) {
-const { error } = await _db.from('footprints').delete().neq('id', 0);
-if(!error) {
-lastGlobalPoint = null; // 清空记录的点
+if(confirm("确定要清空吗？")) {
+await _db.from('footprints').delete().neq('id', 0);
 location.reload();
 }
 }
-}
-
 </script>
+
+<style>
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
 </body>
 </html>
