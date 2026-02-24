@@ -2,10 +2,10 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>我的时光地图-终极修复版</title>
+<title>我的时光地图-大功告成</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
-/* 强制全屏撑开，解决黑屏 */
+/* 强制全屏显示，彻底解决黑屏 */
 body, html, #map { margin: 0; padding: 0; height: 100%; width: 100%; background: #000b1a; }
 .ui-panel { position: fixed; z-index: 1000; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; }
 button { padding: 12px 24px; cursor: pointer; border-radius: 30px; border: none; font-weight: bold; color: white; background: #ff416c; box-shadow: 0 4px 15px rgba(0,0,0,0.5); font-size: 16px; }
@@ -30,24 +30,17 @@ button { padding: 12px 24px; cursor: pointer; border-radius: 30px; border: none;
 
 <script>
 // ==========================================
-// 🚩 改这里：请确保从 Supabase 后台复制，不要有多余空格
+// 🚩 注意：请确保这两行后面括号里的内容和 Supabase 一致
 // ==========================================
 const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 // ==========================================
 
-let _db, map;
-
-try {
-_db = supabase.createClient(SB_URL, SB_KEY);
-map = L.map('map', { zoomControl: false }).setView([20, 0], 3);
+const _db = supabase.createClient(SB_URL, SB_KEY);
+var map = L.map('map', { zoomControl: false }).setView([20, 0], 3);
 L.tileLayer('https://{s}.tile.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
-console.log("✅ 地图与数据库初始化成功");
-} catch (e) {
-console.error("❌ 初始化失败，请检查 Key 填写:", e);
-}
 
-// 绘制轨迹函数
+// 绘制 10px 粗轨迹
 async function drawLine(start, end) {
 return new Promise(res => {
 const line = L.polyline.antPath([start, start], {
@@ -64,14 +57,11 @@ if(i >= 30) { clearInterval(timer); res(); }
 });
 }
 
-// 加载历史数据
+// 核心加载逻辑
 async function loadData() {
+try {
 const { data, error } = await _db.from('footprints').select('*').order('created_at', {ascending: true});
-if(error) {
-console.error("无法读取数据，请检查 Supabase 表权限 (RLS):", error.message);
-return;
-}
-if(!data || data.length === 0) return;
+if(error || !data || data.length === 0) return;
 
 map.flyTo([data[0].lat, data[0].lng], 6);
 await new Promise(r => setTimeout(r, 2000));
@@ -91,11 +81,12 @@ map.panTo(pos);
 await new Promise(r => setTimeout(r, 1000));
 last = pos;
 }
+} catch(e) { console.error("加载数据失败"); }
 }
 
 setTimeout(loadData, 1000);
 
-// 处理多选上传逻辑
+// 批量处理上传
 document.getElementById('fileIn').onchange = async function(e) {
 const files = Array.from(e.target.files);
 for (const file of files) {
@@ -108,14 +99,11 @@ const canvas = document.createElement('canvas');
 canvas.width = 300; canvas.height = 300;
 canvas.getContext('2d').drawImage(img, 0, 0, 300, 300);
 const mini = canvas.toDataURL('image/jpeg', 0.6);
-
 EXIF.getData(file, async function() {
 const lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
-const latR = EXIF.getTag(this, "GPSLatitudeRef"), lonR = EXIF.getTag(this, "GPSLongitudeRef");
 if(lat && lon) {
-let latN = (lat[0] + lat[1]/60 + lat[2]/3600);
-let lonN = (lon[0] + lon[1]/60 + lon[2]/3600);
-if(latR === "S") latN = -latN; if(lonR === "W") lonN = -lonN;
+let latN = lat[0] + lat[1]/60 + lat[2]/3600;
+let lonN = lon[0] + lon[1]/60 + lon[2]/3600;
 await _db.from('footprints').insert([{ lat: latN, lng: lonN, img_url: mini, user_id: 'me' }]);
 }
 resolve();
@@ -130,7 +118,7 @@ location.reload();
 };
 
 async function clearAll() {
-if(confirm("确定要清空所有足迹吗？")) {
+if(confirm("重置吗？")) {
 await _db.from('footprints').delete().eq('user_id', 'me');
 location.reload();
 }
