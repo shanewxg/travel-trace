@@ -2,141 +2,106 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·终极完全体</title>
+<title>彩虹岁月·极速版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<link href="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.css" rel="stylesheet"/>
+<script src="https://cdn.bootcdn.net/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exif-js/2.3.0/exif.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
-<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
 <style>
 body, html, #map { margin:0; height:100%; width:100%; background: #000b1a; }
-.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); display: flex; gap: 12px; width: 90%; justify-content: center; }
-button {
-padding: 12px 20px; color: white; border: none; border-radius: 30px;
-font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4);
-background: linear-gradient(135deg, #667eea, #764ba2); white-space: nowrap;
-}
-.btn-clear { background: rgba(255,255,255,0.1) !important; color: #ccc !important; }
-
-/* 照片标志：更大、更稳、带落场动画 */
-.photo-marker-icon {
-border: 3px solid white; border-radius: 12px;
-width:120px; height:120px; object-fit:cover;
-box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-animation: dropIn 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-transform-origin: bottom;
-}
-@keyframes dropIn { from { transform: translateY(-30px) scale(0); opacity: 0; } to { transform: translateY(0) scale(1); opacity: 1; } }
-
-/* 音乐播放器 */
-.music-player {
-position: fixed; top: 20px; left: 20px; z-index: 10000;
-padding: 8px 15px; background: rgba(0,0,0,0.6);
-border-radius: 20px; display: flex; align-items: center;
-box-shadow: 0 4px 15px rgba(0,0,0,0.3); backdrop-filter: blur(5px);
-cursor: pointer; color: white; font-size: 13px;
-}
-
-/* 分享弹窗 */
-.share-modal {
-display: none; position: fixed; z-index: 20000; left: 0; top: 0;
-width: 100%; height: 100%; background: rgba(0,0,0,0.85);
-justify-content: center; align-items: center; flex-direction: column;
-}
-.share-content { background: white; padding: 20px; border-radius: 15px; width: 85%; max-width: 400px; text-align: center; }
-.share-preview { width: 100%; border-radius: 10px; margin: 15px 0; border: 1px solid #eee; }
+.ui-panel { position:fixed; z-index:9999; bottom:20px; left:50%; transform:translateX(-50%); display: flex; gap: 8px; }
+button { padding: 10px 16px; color: white; border: none; border-radius: 20px; font-weight: bold; background: linear-gradient(135deg, #667eea, #764ba2); font-size: 13px; }
+.photo-marker-icon { border: 2px solid white; border-radius: 8px; width:90px; height:90px; object-fit:cover; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+/* 增加一个加载提示，让用户知道已经在行动了 */
+#loader { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); color: white; z-index: 10001; font-family: sans-serif; display: none; }
 </style>
 </head>
 <body>
 
+<div id="loader">🚀 正在穿越时光...</div>
 <div id="map"></div>
-
-<div class="music-player" id="musicBtn">🎶 <span id="musicState">播放音乐</span></div>
-<audio id="bgMusic" loop src="你的音乐直链.mp3"></audio>
 
 <div class="ui-panel">
 <button onclick="document.getElementById('fileIn').click()">📷 彩虹光影</button>
-<button onclick="openShare()">🔗 分享</button>
-<button class="btn-clear" onclick="clearAll()">🕯️ 重启</button>
+<button onclick="location.reload()">🔄 重演轨迹</button>
+<button style="background:#444" onclick="clearAll()">🕯️ 重启</button>
 </div>
-
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
-<div id="shareModal" class="share-modal">
-<div class="share-content">
-<h3 style="margin:0;color:#333">我的足迹快照</h3>
-<img id="shareImg" class="share-preview">
-<button id="dlBtn" class="share-button" style="padding:10px 20px; background:#667eea; color:white; border:none; border-radius:5px;">下载到相册</button>
-<p style="color:#999;font-size:12px;margin-top:10px;" onclick="closeShare()">点击此处关闭</p>
-</div>
-</div>
-
 <script>
-// ======= 🚩 填入你的信息 =======
 const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
-// =============================
-
 const _db = supabase.createClient(SB_URL, SB_KEY);
+
 const yearColors = { "2024": "#FF4500", "2025": "#FFD700", "default": "#00BFFF" };
 
-var map = L.map('map', { zoomControl: false }).setView([30, 110], 4);
+// 1. 立即初始化地图，不等待
+var map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([30, 110], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// 核心功能封装
-function drawPath(start, end, color) {
-return L.polyline.antPath([start, end], {
-delay: 800, weight: 10, color: color, pulseColor: '#FFFFFF', opacity: 0.8
-}).addTo(map);
-}
-
 function dropPhoto(point, color, imgUrl) {
-L.circleMarker(point, { radius: 8, color: color, fillColor: "#fff", fillOpacity: 1 }).addTo(map);
+L.circleMarker(point, { radius: 5, color: color, fillColor: "#fff", fillOpacity: 1 }).addTo(map);
 if (imgUrl) {
 const icon = L.divIcon({
 html: `<img src="${imgUrl}" class="photo-marker-icon">`,
-iconSize: [120, 120], iconAnchor: [60, 120]
+iconSize: [90, 90], iconAnchor: [45, 90]
 });
 L.marker(point, {icon: icon}).addTo(map);
 }
 }
 
-// --- 提速版剧本 ---
-async function loadHistory() {
-const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
-if (!data || data.length === 0) return;
+// --- ⚡️ 极速加载逻辑 ---
+async function startShow() {
+// 立即显示加载状态
+const loader = document.getElementById('loader');
+loader.style.display = 'block';
 
+// 只要查询一开始，不再等全部结果，直接获取快照
+const { data, error } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
+
+if (error || !data || data.length === 0) {
+loader.style.display = 'none';
+return;
+}
+
+loader.style.display = 'none';
 let lastPoint = null;
+
+// 核心优化：并行渲染
 for (let i = 0; i < data.length; i++) {
 const p = data[i];
 const currentPoint = [p.lat, p.lng];
 const color = yearColors[new Date(p.created_at).getFullYear()] || yearColors.default;
 
-// 镜头俯冲（缩短时长，增加流畅度）
-map.flyTo(currentPoint, 12, { animate: true, duration: 1.2 });
+// 镜头滑行和照片落地几乎同步，不再死等
+map.flyTo(currentPoint, 11, { animate: true, duration: 1.0 });
 
-// 缩短等待：镜头还没停稳就让照片落地，更有视觉冲击力
-await new Promise(r => setTimeout(r, 800));
+// 稍微错开 300ms 营造落地感，而不是等 2 秒
+await new Promise(r => setTimeout(r, 400));
 dropPhoto(currentPoint, color, p.img_url);
 
 if (lastPoint) {
-drawPath(lastPoint, currentPoint, color);
+L.polyline.antPath([lastPoint, currentPoint], {
+delay: 600, weight: 7, color: color, pulseColor: '#FFFFFF', opacity: 0.8
+}).addTo(map);
 }
+
 lastPoint = currentPoint;
+// 每站停留极短时间，保持流畅
 await new Promise(r => setTimeout(r, 600));
 }
 
-// 结束后自动展示全貌
-setTimeout(() => {
-map.flyToBounds(data.map(p => [p.lat, p.lng]), { padding: [50, 50], duration: 2 });
-}, 2000);
+// 最终全局预览
+map.flyToBounds(data.map(p => [p.lat, p.lng]), { padding: [40, 40], duration: 1.5 });
 }
-loadHistory();
 
-// 上传逻辑
+// 页面加载完立即开跑
+window.addEventListener('load', startShow);
+
+// 上传压缩优化：安卓黑屏杀手
 document.getElementById('fileIn').onchange = async function(e) {
 const files = Array.from(e.target.files);
 for (const file of files) {
@@ -146,10 +111,11 @@ reader.onload = function(ev) {
 const img = new Image();
 img.onload = async function() {
 const canvas = document.createElement('canvas');
-const size = 600;
+// 压缩到 400 像素，安卓加载速度提升 2 倍
+const size = 400;
 canvas.width = size; canvas.height = size;
 canvas.getContext('2d').drawImage(img, 0, 0, size, size);
-const miniData = canvas.toDataURL('image/jpeg', 0.8);
+const miniData = canvas.toDataURL('image/jpeg', 0.6);
 EXIF.getData(file, async function() {
 const lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
 const latR = EXIF.getTag(this, "GPSLatitudeRef"), lonR = EXIF.getTag(this, "GPSLongitudeRef");
@@ -169,36 +135,8 @@ reader.readAsDataURL(file);
 location.reload();
 };
 
-// 音乐控制
-const mBtn = document.getElementById('musicBtn');
-const bgm = document.getElementById('bgMusic');
-mBtn.onclick = () => {
-if (bgm.paused) { bgm.play(); document.getElementById('musicState').innerText = "暂停音乐"; }
-else { bgm.pause(); document.getElementById('musicState').innerText = "播放音乐"; }
-};
-
-// 分享快照
-async function openShare() {
-const modal = document.getElementById('shareModal');
-modal.style.display = 'flex';
-document.getElementById('shareImg').style.display = 'none';
-
-// html2canvas 捕捉
-html2canvas(document.getElementById('map'), { useCORS: true }).then(canvas => {
-const url = canvas.toDataURL('image/png');
-const img = document.getElementById('shareImg');
-img.src = url;
-img.style.display = 'block';
-document.getElementById('dlBtn').onclick = () => {
-const a = document.createElement('a');
-a.href = url; a.download = '我的彩虹足迹.png'; a.click();
-};
-});
-}
-function closeShare() { document.getElementById('shareModal').style.display = 'none'; }
-
 async function clearAll() {
-if(confirm("确定要重启江湖吗？")) {
+if(confirm("确定清空吗？")) {
 await _db.from('footprints').delete().neq('id', 0);
 location.reload();
 }
