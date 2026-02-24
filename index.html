@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月放映机</title>
+<title>彩虹岁月·慢放放映机</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -11,32 +11,26 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
 
 <style>
-body, html, #map { margin:0; height:100%; background: #000b1a; font-family: "Microsoft YaHei", sans-serif; }
-.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 95%; text-align:center; display: flex; justify-content: center; gap: 10px; }
+body, html, #map { margin:0; height:100%; background: #000b1a; }
+.ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 95%; text-align:center; display: flex; justify-content: center; gap: 15px; }
 button {
-padding: 12px 20px; color: white; border: none; border-radius: 25px;
-font-weight: bold; cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.3); font-size: 14px;
-transition: all 0.3s;
+padding: 14px 25px; color: white; border: none; border-radius: 30px;
+font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px;
+transition: all 0.5s;
 }
-button:active { transform: scale(0.9); }
 .btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
-.btn-clear { background: linear-gradient(135deg, #ff4b2b, #ff416c); }
-
-/* 音乐按钮样式 */
-.music-control { position: fixed; top: 20px; right: 20px; z-index: 10000; background: rgba(255,255,255,0.2); border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; color: white; cursor: pointer; backdrop-filter: blur(5px); }
-
-.photo-marker { border: 2px solid white; border-radius: 50%; width:50px; height:50px; object-fit:cover; box-shadow: 0 0 15px rgba(255,255,255,0.8); animation: popIn 0.8s cubic-bezier(0.68, -0.55, 0.27, 1.55); }
-@keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+.btn-clear { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(5px); }
+.photo-marker { border: 2px solid white; border-radius: 50%; width:60px; height:60px; object-fit:cover; box-shadow: 0 0 20px rgba(255,255,255,0.8); animation: softPop 1.5s ease-out; }
+@keyframes softPop { from { transform: scale(0) rotate(-10deg); opacity: 0; } to { transform: scale(1) rotate(0deg); opacity: 1; } }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="music-control" onclick="toggleMusic()" id="musicBtn">🎵</div>
-<audio id="bgm" loop src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"></audio> <div class="ui-panel">
-<button class="btn-upload" onclick="document.getElementById('fileIn').click()">开启彩虹记忆</button>
-<button class="btn-clear" onclick="clearAll()">重启人生版图</button>
+<div class="ui-panel">
+<button class="btn-upload" onclick="document.getElementById('fileIn').click()">✨ 添加足迹</button>
+<button class="btn-clear" onclick="clearAll()">🕯️ 重置版图</button>
 </div>
 
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
@@ -46,35 +40,33 @@ const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// --- 1. 严格的岁月色卡分配 ---
 const yearColors = {
-"2018": "#FFB6C1", // 粉色
-"2019": "#1E90FF", // 蓝色
-"2020": "#800080", // 紫色
-"2021": "#90EE90", // 浅绿色
-"2022": "#008000", // 绿色
-"2023": "#556B2F", // 棕绿色
-"2024": "#8B4513", // 棕色
-"2025": "#FFFF00", // 黄色
-"2026": "#FF8C00", // 橙色
-"2027": "#FF0000", // 红色
+"2018": "#FFB6C1", "2019": "#1E90FF", "2020": "#800080", "2021": "#90EE90", "2022": "#008000",
+"2023": "#556B2F", "2024": "#8B4513", "2025": "#FFFF00", "2026": "#FF8C00", "2027": "#FF0000",
 "default": "#FFFFFF"
 };
 
 let lastGlobalPoint = null;
 
-// --- 2. 初始化地图（开场高空视角） ---
+// --- 1. 初始世界视角 ---
 var map = L.map('map', { zoomControl: false }).setView([20, 0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 3. 丝滑加载与俯冲动画 ---
+// --- 2. 电影级俯冲加载逻辑 ---
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
 
 if (data && data.length > 0) {
-// 第一步：先缓缓俯冲到足迹区域
-map.flyTo([data[0].lat, data[0].lng], 5, { duration: 3 });
+const allCoords = data.map(p => [p.lat, p.lng]);
+const bounds = L.latLngBounds(allCoords);
+const center = bounds.getCenter(); // 计算足迹的中心
 
+// 第一步：延迟 1 秒后开始慢速俯冲
+setTimeout(() => {
+map.flyTo(center, 7, { duration: 5, easeLinearity: 0.1 }); // 5秒慢速俯冲
+}, 1000);
+
+// 第二步：待俯冲快结束时（6秒后），开始优雅生长
 setTimeout(() => {
 let i = 0;
 function drawNext() {
@@ -85,46 +77,29 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
-// 落下发光点
-L.circleMarker(currentPoint, { radius: 7, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
+L.circleMarker(currentPoint, { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
 
 if (lastGlobalPoint) {
-// 丝滑生长的线条
 L.polyline.antPath([lastGlobalPoint, currentPoint], {
-delay: 3000, // 调慢流光速度
+delay: 4000, // 极慢的流光
 color: color,
 pulseColor: "#ffffff",
-weight: 4
+weight: 5
 }).addTo(map);
 }
 
 lastGlobalPoint = currentPoint;
 i++;
-// 每一段生长间隔拉长到 1.5 秒，让眼睛跟得上
-setTimeout(drawNext, 1500);
+// 每一段轨迹生长间隔 3 秒，让人能细细品味
+setTimeout(drawNext, 3000);
 }
 drawNext();
-}, 3500); // 等俯冲动画做完再开始画线
+}, 6000);
 }
 }
 loadHistory();
 
-// --- 4. 音乐控制 ---
-function toggleMusic() {
-const bgm = document.getElementById('bgm');
-const btn = document.getElementById('musicBtn');
-if (bgm.paused) {
-bgm.play();
-btn.style.animation = "spin 3s linear infinite";
-btn.innerText = "💿";
-} else {
-bgm.pause();
-btn.style.animation = "";
-btn.innerText = "🎵";
-}
-}
-
-// --- 5. 上传与实时连线 ---
+// --- 3. 静默上传逻辑 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -139,14 +114,15 @@ const currentPoint = [latNum, lonNum];
 const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
 if (!error) {
 var tempUrl = URL.createObjectURL(file);
-var icon = L.divIcon({ html: `<img src="${tempUrl}" class="photo-marker">`, className: '', iconSize: [50, 50] });
+var icon = L.divIcon({ html: `<img src="${tempUrl}" class="photo-marker">`, className: '', iconSize: [60, 60] });
 L.marker(currentPoint, { icon: icon }).addTo(map);
+
 if (lastGlobalPoint) {
 const year = new Date().getFullYear().toString();
-L.polyline.antPath([lastGlobalPoint, currentPoint], { delay: 3000, color: yearColors[year] || "#fff", weight: 4 }).addTo(map);
+L.polyline.antPath([lastGlobalPoint, currentPoint], { delay: 4000, color: yearColors[year] || "#fff", weight: 5 }).addTo(map);
 }
 lastGlobalPoint = currentPoint;
-map.panTo(currentPoint);
+map.flyTo(currentPoint, 10, { duration: 2 }); // 实时上传也带一个小俯冲
 }
 }
 });
@@ -154,15 +130,11 @@ map.panTo(currentPoint);
 };
 
 async function clearAll() {
-if(confirm("确定要清空吗？")) {
+if(confirm("确定要抹掉所有记忆吗？")) {
 await _db.from('footprints').delete().neq('id', 0);
 location.reload();
 }
 }
 </script>
-
-<style>
-@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-</style>
 </body>
 </html>
