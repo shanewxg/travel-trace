@@ -114,11 +114,21 @@ user_id: "me" // 填个固定值，防止数据库因为“不知道是谁”而
 // -----------------------
 
 if (!error) {
-alert("同步成功！即将刷新彩虹轨迹...");
-location.reload();
-} else {
-console.error("云端存储失败:", error.message);
-alert("同步失败，请检查数据库连接");
+
+// 老师的“魔法代码”：在刷新前，先把照片贴在地图上
+var photoUrl = URL.createObjectURL(file); // 创建一个临时本地链接
+var photoIcon = L.divIcon({
+html: `<img src="${photoUrl}" class="photo-marker" style="width:50px;height:50px;border-radius:50%;border:2px solid #fff;">`,
+className: '',
+iconSize: [50, 50]
+});
+L.marker([latNum, lonNum], { icon: photoIcon }).addTo(map);
+
+alert("同步成功！照片已挂载到地图。");
+// 如果想看照片久一点，可以把 location.reload() 暂时注释掉
+// location.reload();
+}
+
 }
 } else {
 alert("这张照片没有GPS信息（可能是微信导出的），请换一张手机拍摄的原图试试！");
