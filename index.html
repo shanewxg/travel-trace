@@ -1,31 +1,29 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html>
 <head>
 <meta charset="UTF-8">
-<title>我的时光足迹</title>
+<title>时光回溯·终极稳健版</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <style>
 body, html, #map { margin: 0; height: 100%; background: #000b1a; }
 .ui-panel { position: fixed; z-index: 1000; bottom: 30px; left: 50%; transform: translateX(-50%); display: flex; gap: 15px; }
-button { padding: 15px 30px; cursor: pointer; border-radius: 50px; border: none; font-weight: bold; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.6); font-size: 16px; }
-.btn-up { background: linear-gradient(135deg, #ff416c, #ff4b2b); }
-.btn-reset { background: rgba(255,255,255,0.15); color: #fff; backdrop-filter: blur(5px); }
-
-/* 照片拍立得效果 */
+button { padding: 15px 25px; cursor: pointer; border-radius: 50px; border: none; font-weight: bold; color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.6); }
+.btn-up { background: #ff416c; }
+.btn-reset { background: rgba(255,255,255,0.2); }
 .photo-polaroid {
-border: 4px solid #fff; border-bottom: 15px solid #fff;
+border: 4px solid #fff; border-bottom: 12px solid #fff;
 width: 80px; height: 80px; object-fit: cover;
-box-shadow: 0 0 15px rgba(255,255,255,0.5);
-animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+box-shadow: 0 0 15px rgba(255,255,255,0.4);
+animation: pop 0.5s ease-out;
 }
-@keyframes pop { from { transform: scale(0) rotate(-10deg); } to { transform: scale(1) rotate(0deg); } }
+@keyframes pop { from { transform: scale(0); } to { transform: scale(1); } }
 </style>
 </head>
 <body>
 
 <div id="map"></div>
 <div class="ui-panel">
-<button class="btn-up" onclick="document.getElementById('fileIn').click()">📷 上传照片</button>
+<button class="btn-up" onclick="document.getElementById('fileIn').click()">📷 记录瞬间</button>
 <button class="btn-reset" onclick="clearAll()">🕯️ 重置</button>
 </div>
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
@@ -36,98 +34,95 @@ animation: pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
 
 <script>
-// 1. 配置区（务必检查 URL 和 Key 是否有空格）
 const SB_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
 const _db = supabase.createClient(SB_URL, SB_KEY);
 
-// 2. 初始化地图
+// 1. 优先初始化地图，防止黑屏
 var map = L.map('map', { zoomControl: false }).setView([20, 0], 3);
 L.tileLayer('https://{s}.tile.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png').addTo(map);
 
-// 3. 绘制醒目轨迹 (10px)
-async function drawStep(start, end, color) {
+// 2. 加粗轨迹函数
+async function drawLine(start, end) {
 return new Promise(res => {
-const antLine = L.polyline.antPath([start, start], {
-color: color, pulseColor: '#ffffff', weight: 10, delay: 1500
+const line = L.polyline.antPath([start, start], {
+color: '#00f2fe', pulseColor: '#ffffff', weight: 12, delay: 1000
 }).addTo(map);
 
-let i = 0; const steps = 40;
+let i = 0;
 const timer = setInterval(() => {
 i++;
-let lat = start[0] + (end[0]-start[0])*(i/steps);
-let lng = start[1] + (end[1]-start[1])*(i/steps);
-antLine.setLatLngs([start, [lat, lng]]);
-if(i >= steps) { clearInterval(timer); res(); }
+let lat = start[0] + (end[0]-start[0])*(i/40);
+let lng = start[1] + (end[1]-start[1])*(i/40);
+line.setLatLngs([start, [lat, lng]]);
+if(i >= 40) { clearInterval(timer); res(); }
 }, 25);
 });
 }
 
-// 4. 时光回溯主逻辑
-async function initPlay() {
+// 3. 数据加载（带容错）
+async function loadData() {
 try {
 const { data, error } = await _db.from('footprints').select('*').order('created_at', {ascending: true});
-if(error) throw error;
-if(!data || data.length === 0) return;
+if(error || !data || data.length === 0) return;
 
-// 俯冲到第一个点
-map.flyTo([data[0].lat, data[0].lng], 7, {duration: 3});
-await new Promise(r => setTimeout(r, 3500));
+map.flyTo([data[0].lat, data[0].lng], 7);
+await new Promise(r => setTimeout(r, 3000));
 
-let lastPos = null;
+let last = null;
 for(let item of data) {
 const pos = [item.lat, item.lng];
-if(lastPos) await drawStep(lastPos, pos, '#00f2fe');
+if(last) await drawLine(last, pos);
 
-// 轨迹到达，贴上照片
 const icon = L.divIcon({
 className: '',
-html: item.img_url ? `<img src="${item.img_url}" class="photo-polaroid">` : `<div style="background:#00f2fe;width:15px;height:15px;border-radius:50%"></div>`,
-iconSize: [80, 100]
+html: item.img_url ? `<img src="${item.img_url}" class="photo-polaroid">` : `<div style="background:#00f2fe;width:10px;height:10px;border-radius:50%"></div>`,
+iconSize: [80, 95]
 });
 L.marker(pos, {icon: icon}).addTo(map);
 map.panTo(pos);
-
 await new Promise(r => setTimeout(r, 1000));
-lastPos = pos;
+last = pos;
 }
-} catch(e) {
-console.error("加载失败:", e.message);
-}
+} catch(e) { console.log("数据加载略有波折，但不影响地图。"); }
 }
 
-// 等待页面完全加载后再启动
-window.onload = initPlay;
+// 确保库加载后再运行
+setTimeout(loadData, 1000);
 
-// 5. 上传处理（包含 Base64 转换）
+// 4. 强制压缩上传
 document.getElementById('fileIn').onchange = function(e) {
 const file = e.target.files[0];
 if(!file) return;
 
 const reader = new FileReader();
 reader.onload = function(ev) {
-const base64 = ev.target.result; // 获取照片内容
+const img = new Image();
+img.onload = function() {
+const canvas = document.createElement('canvas');
+// 狠狠压缩到 200 像素，确保不黑屏
+canvas.width = 200; canvas.height = 200;
+canvas.getContext('2d').drawImage(img, 0, 0, 200, 200);
+const miniBase64 = canvas.toDataURL('image/jpeg', 0.5);
+
 EXIF.getData(file, async function() {
 const lat = EXIF.getTag(this, "GPSLatitude");
 const lon = EXIF.getTag(this, "GPSLongitude");
 if(lat && lon) {
 const latNum = (lat[0] + lat[1]/60 + lat[2]/3600);
 const lonNum = (lon[0] + lon[1]/60 + lon[2]/3600);
-
-await _db.from('footprints').insert([{
-lat: latNum, lng: lonNum, img_url: base64, user_id: 'me'
-}]);
+await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: miniBase64, user_id: 'me' }]);
 location.reload();
-} else {
-alert("这张照片没有GPS位置信息");
-}
+} else { alert("照片没坐标信息"); }
 });
+};
+img.src = ev.target.result;
 };
 reader.readAsDataURL(file);
 };
 
 async function clearAll() {
-if(confirm("确定要重置吗？")) {
+if(confirm("重置吗？")) {
 await _db.from('footprints').delete().eq('user_id', 'me');
 location.reload();
 }
