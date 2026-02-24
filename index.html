@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·慢时光极速修复版</title>
+<title>彩虹岁月·慢时光最终亮屏版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -11,21 +11,14 @@
 <script src="https://cdn.jsdelivr.net/npm/leaflet-ant-path@1.3.0/dist/leaflet-ant-path.min.js"></script>
 
 <style>
-body, html, #map { margin:0; height:100%; background: #000b1a; }
+body, html, #map { margin:0; height:100%; width:100%; background: #000b1a; }
 .ui-panel { position:fixed; z-index:9999; bottom:30px; left:50%; transform:translateX(-50%); width: 95%; text-align:center; display: flex; justify-content: center; gap: 15px; }
-button {
-padding: 14px 25px; color: white; border: none; border-radius: 30px;
-font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px;
-transition: all 0.5s;
-}
+button { padding: 14px 25px; color: white; border: none; border-radius: 30px; font-weight: bold; cursor: pointer; box-shadow: 0 6px 20px rgba(0,0,0,0.4); font-size: 14px; transition: all 0.5s; }
 .btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
 .btn-clear { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(5px); color: #ccc; }
 
-.photo-marker-icon {
-border: 3px solid white; border-radius: 50%; width:70px; height:70px;
-object-fit:cover; box-shadow: 0 0 20px rgba(255,255,255,0.8);
-animation: cinematicIn 2s ease-out forwards;
-}
+/* 照片标志样式 */
+.photo-marker-icon { border: 3px solid white; border-radius: 10px; width:60px; height:60px; object-fit:cover; box-shadow: 0 0 15px rgba(255,255,255,0.5); animation: cinematicIn 1s ease-out forwards; }
 @keyframes cinematicIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
 </style>
 </head>
@@ -34,15 +27,18 @@ animation: cinematicIn 2s ease-out forwards;
 <div id="map"></div>
 
 <div class="ui-panel">
-<button class="btn-upload" onclick="document.getElementById('fileIn').click()">✨ 添加足迹</button>
+<button class="btn-upload" onclick="document.getElementById('fileIn').click()">✨ 批量上传照片</button>
 <button class="btn-clear" onclick="clearAll()">🕯️ 重置版图</button>
 </div>
 
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
+// --- 这里填入你的真实信息 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
+// -----------------------
+
 const _db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const yearColors = {
@@ -51,105 +47,96 @@ const yearColors = {
 "default": "#FFFFFF"
 };
 
-let lastGlobalPoint = null;
-
-var map = L.map('map', { zoomControl: false, scrollWheelZoom: true }).setView([20, 0], 2);
+var map = L.map('map', { zoomControl: false }).setView([20, 110], 4);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 核心助手：极慢速生长线条，且返回一个“画完了”的信号 ---
+[span_3](start_span)// 线条动画函数[span_3](end_span)
 async function animateLine(start, end, color) {
 return new Promise((resolve) => {
-const steps = 200;
+const steps = 60;
 let currentStep = 0;
-const tempCoords = [start];
-
-const growingLine = L.polyline.antPath([start, start], {
-delay: 8000, color: color, pulseColor: "#ffffff", weight: 5
-}).addTo(map);
-
+const line = L.polyline.antPath([start, start], { delay: 3000, color: color, weight: 5 }).addTo(map);
 const interval = setInterval(() => {
 currentStep++;
 const lat = start[0] + (end[0] - start[0]) * (currentStep / steps);
 const lng = start[1] + (end[1] - start[1]) * (currentStep / steps);
-
-tempCoords.push([lat, lng]);
-growingLine.setLatLngs(tempCoords);
-
-if (currentStep >= steps) {
-clearInterval(interval);
-resolve(); // 线画完了，告诉主程序可以放下一张照片了
-}
-}, 50);
+line.setLatLngs([start, [lat, lng]]);
+if (currentStep >= steps) { clearInterval(interval); resolve(); }
+}, 40);
 });
 }
 
-// --- 核心助手：掉落照片 ---
-function dropPhoto(point, color) {
-// 这里我们先放圆点，代表足迹已到达
-L.circleMarker(point, { radius: 8, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
-// 如果有照片（目前是本地模拟，由于刷新会丢，所以我们先让圆点作为标记）
-// 如果你希望在这里显示照片，可以在此处加入 L.marker 逻辑
+[span_4](start_span)// 掉落照片函数[span_4](end_span)
+function dropPhoto(point, color, imgUrl) {
+L.circleMarker(point, { radius: 6, color: color, fillColor: color, fillOpacity: 0.9 }).addTo(map);
+if (imgUrl) {
+const icon = L.divIcon({
+html: `<img src="${imgUrl}" class="photo-marker-icon">`,
+iconSize: [60, 60],
+className: ''
+});
+L.marker(point, {icon: icon}).addTo(map);
+}
 }
 
+[span_5](start_span)[span_6](start_span)[span_7](start_span)// 加载历史[span_5](end_span)[span_6](end_span)[span_7](end_span)
 async function loadHistory() {
 const { data } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
-
 if (data && data.length > 0) {
-// 1. 缓缓俯冲至起点
-map.flyTo([data[0].lat, data[0].lng], 7, { duration: 8 });
-await new Promise(res => setTimeout(res, 9000));
+map.flyTo([data[0].lat, data[0].lng], 6, { duration: 3 });
+await new Promise(res => setTimeout(res, 3500));
 
+let lastPoint = null;
 for (let i = 0; i < data.length; i++) {
 const p = data[i];
 const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
-// --- 动作 A：摄像机对焦 ---
-map.panTo(currentPoint, { animate: true, duration: 3 });
-await new Promise(res => setTimeout(res, 1000));
+if (lastPoint) await animateLine(lastPoint, currentPoint, color);
 
-// --- 动作 B：当前足迹点亮（照片/圆点出现） ---
-dropPhoto(currentPoint, color);
-
-// 让观众看 3 秒这张照片，然后再出发
-await new Promise(res => setTimeout(res, 3000));
-
-// --- 动作 C：开始延伸向下一个点的轨迹 ---
-if (i < data.length - 1) { // 如果不是最后一个点
-const nextP = data[i+1];
-const nextYear = new Date(nextP.created_at).getFullYear().toString();
-const nextColor = yearColors[nextYear] || yearColors["default"];
-const nextPoint = [nextP.lat, nextP.lng];
-
-// 【关键】必须等线画完了，循环才会进入下一轮去放下一张照片
-await animateLine(currentPoint, nextPoint, nextColor);
-}
+dropPhoto(currentPoint, color, p.img_url);
+map.panTo(currentPoint);
+await new Promise(res => setTimeout(res, 1500));
+lastPoint = currentPoint;
 }
 }
 }
 loadHistory();
 
-// 上传逻辑（保持同步）
-document.getElementById('fileIn').onchange = function(e) {
-var files = Array.from(e.target.files);
-files.forEach(file => {
+[span_8](start_span)// 批量上传并压缩照片[span_8](end_span)
+document.getElementById('fileIn').onchange = async function(e) {
+const files = Array.from(e.target.files);
+for (const file of files) {
+await new Promise(resolve => {
+const reader = new FileReader();
+reader.onload = function(ev) {
+const img = new Image();
+img.onload = async function() {
+// 压缩图片防止数据库撑爆
+const canvas = document.createElement('canvas');
+const ctx = canvas.getContext('2d');
+canvas.width = 400; canvas.height = 400;
+ctx.drawImage(img, 0, 0, 400, 400);
+const miniImg = canvas.toDataURL('image/jpeg', 0.7);
+
 EXIF.getData(file, async function() {
 var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
 var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GPSLongitudeRef");
 if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
-const currentPoint = [latNum, lonNum];
-
-const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
-if (!error) {
-alert("新足迹已录入，刷新即可开启时光回溯");
+await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: miniImg, user_id: "me" }]);
+}
+resolve();
+});
+};
+img.src = ev.target.result;
+};
+reader.readAsDataURL(file);
+});
+}
 location.reload();
-}
-}
-});
-});
 };
 
 async function clearAll() {
@@ -159,6 +146,5 @@ location.reload();
 }
 }
 </script>
-
 </body>
 </html>
