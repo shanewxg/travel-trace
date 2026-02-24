@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·时光加速版</title>
+<title>彩虹岁月·时光回溯</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link href="https://unpkg.com/leaflet/dist/leaflet.css" rel="stylesheet"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
@@ -17,7 +17,6 @@ button { padding: 14px 25px; color: white; border: none; border-radius: 30px; fo
 .btn-upload { background: linear-gradient(135deg, #667eea, #764ba2); }
 .btn-clear { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(5px); color: #ccc; }
 
-/* 照片标记动画：缩短了一点时间，让弹出更干脆 */
 .photo-marker-icon {
 border: 3px solid white; border-radius: 50%; width:70px; height:70px;
 object-fit:cover; box-shadow: 0 0 20px rgba(255,255,255,0.8);
@@ -49,16 +48,12 @@ const yearColors = {
 var map = L.map('map', { zoomControl: false, scrollWheelZoom: true }).setView([20, 0], 2);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// --- 核心：加速生长的线条函数 ---
 async function animateLineToNext(start, end, color) {
 return new Promise((resolve) => {
-const steps = 60; // 减少步数，提高单步跨度
+const steps = 60;
 let currentStep = 0;
 const growingLine = L.polyline.antPath([start, start], {
-delay: 2000, // 内部流光速度也加快
-color: color,
-pulseColor: "#ffffff",
-weight: 5
+delay: 2000, color: color, pulseColor: "#ffffff", weight: 5
 }).addTo(map);
 
 const interval = setInterval(() => {
@@ -66,24 +61,21 @@ currentStep++;
 const lat = start[0] + (end[0] - start[0]) * (currentStep / steps);
 const lng = start[1] + (end[1] - start[1]) * (currentStep / steps);
 growingLine.setLatLngs([start, [lat, lng]]);
-
 if (currentStep >= steps) {
 clearInterval(interval);
 resolve();
 }
-}, 30); // 间隔从 50ms 缩短到 30ms，总耗时约 1.8 秒一段
+}, 25); // 稍微又快了一点点
 });
 }
 
 async function loadHistory() {
 try {
 const { data, error } = await _db.from('footprints').select('*').order('created_at', { ascending: true });
-if (error) throw error;
-if (!data || data.length === 0) return;
+if (error || !data || data.length === 0) return;
 
-// 1. 俯冲开场：加速到 4 秒
-map.flyTo([data[0].lat, data[0].lng], 8, { duration: 4 });
-await new Promise(res => setTimeout(res, 4500));
+map.flyTo([data[0].lat, data[0].lng], 8, { duration: 3 });
+await new Promise(res => setTimeout(res, 3500));
 
 let previousPoint = null;
 
@@ -93,36 +85,29 @@ const year = new Date(p.created_at).getFullYear().toString();
 const color = yearColors[year] || yearColors["default"];
 const currentPoint = [p.lat, p.lng];
 
-// 如果有上一个点，先跑轨迹
 if (previousPoint) {
 await animateLineToNext(previousPoint, currentPoint, color);
 }
 
-// --- 轨迹到达！显示照片和圆点 ---
-map.panTo(currentPoint, { animate: true, duration: 1 });
-
-// 绘制基础点
+map.panTo(currentPoint, { animate: true, duration: 0.8 });
 L.circleMarker(currentPoint, { radius: 6, color: color, fillColor: color, fillOpacity: 0.8 }).addTo(map);
 
-// 【重点】这里是照片显示逻辑：由于数据库还没存图片，我们先用一个带动画的标记
-// 如果后续你用了云存储，这里就放真正的图片地址
+// 自动显示一个年份标记（这就是我们要找回的照片占位符）
 const photoIcon = L.divIcon({
-html: `<div class="photo-marker-icon" style="background:${color}; display:flex; align-items:center; justify-content:center; color:white; font-size:10px;">${year}</div>`,
+html: `<div class="photo-marker-icon" style="background:${color}; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; font-size:12px;">${year}</div>`,
 className: '',
-iconSize: [40, 40]
+iconSize: [50, 50]
 });
 L.marker(currentPoint, { icon: photoIcon }).addTo(map);
 
-// 缩短停留时间：从 4秒 减到 1.5秒
-await new Promise(res => setTimeout(res, 1500));
-
+await new Promise(res => setTimeout(res, 1200));
 previousPoint = currentPoint;
 }
-} catch (e) { console.error("加载出错:", e); }
+} catch (e) { console.error(e); }
 }
 loadHistory();
 
-// 上传逻辑
+// --- 修改点：静默保存，不再弹窗 ---
 document.getElementById('fileIn').onchange = function(e) {
 var files = Array.from(e.target.files);
 files.forEach(file => {
@@ -132,20 +117,27 @@ var latRef = EXIF.getTag(this, "GPSLatitudeRef"), lonRef = EXIF.getTag(this, "GP
 if (lat && lon) {
 var latNum = (lat[0] + lat[1]/60 + lat[2]/3600) * (latRef === "S" ? -1 : 1);
 var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonRef === "W" ? -1 : 1);
-const { error } = await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
-if (!error) {
-alert("足迹录入成功！");
-location.reload();
-}
+
+// 直接存，不弹窗
+await _db.from('footprints').insert([{ lat: latNum, lng: lonNum, img_url: "", user_id: "me" }]);
+
+// 实时在地图上显示这张照片
+var tempUrl = URL.createObjectURL(file);
+var icon = L.divIcon({
+html: `<img src="${tempUrl}" class="photo-marker-icon">`,
+className: '', iconSize: [70, 70]
+});
+L.marker([latNum, lonNum], { icon: icon }).addTo(map);
+map.panTo([latNum, lonNum]);
 }
 });
 });
 };
 
 async function clearAll() {
-if(confirm("确定要清空吗？")) {
+if(confirm("确定要重置版图吗？")) {
 await _db.from('footprints').delete().eq('user_id', 'me');
-setTimeout(() => { window.location.reload(); }, 500);
+window.location.reload();
 }
 }
 </script>
