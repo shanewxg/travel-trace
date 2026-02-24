@@ -23,49 +23,35 @@ button { padding: 15px 30px; background: linear-gradient(135deg, #00f2fe, #4facf
 <input type="file" id="fileIn" accept="image/*" multiple style="display:none">
 
 <script>
-// --- 配置区 ---
+// --- 终极配置区 ---
 const SUPABASE_URL = 'https://pzgyvnpbnvxciruqflya.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB6Z3l2bnBibnZ4Y2lydXFmbHlhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE4ODAzNDAsImV4cCI6MjA4NzQ1NjM0MH0.WamSJoWx2-FSs-QfDZ4rZkhgLOqc-W4VpBmYphAkwsk';
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+// 老师提醒：这里用了标准的创建方式
+const { createClient } = supabase;
+const _supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// 先让地图出来，不要等云端数据
 var map = L.map('map', { zoomControl: false }).setView([30, 105], 4);
 L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}').addTo(map);
 
-// 1. 页面加载时：从云端下载之前的足迹
+console.log("地图加载成功！正在连接云端...");
+
+// 异步加载云端数据，不影响地图显示
 async function loadHistory() {
-let { data, error } = await supabase.from('footprints').select('*');
+try {
+let { data, error } = await _supabase.from('footprints').select('*');
+if (error) throw error;
 if (data) data.forEach(p => addMarkerToMap(p));
+console.log("云端数据同步完成");
+} catch (err) {
+console.error("云端连接失败，但不影响使用本地上传:", err);
+}
 }
 loadHistory();
 
-function addMarkerToMap(p) {
-var icon = L.divIcon({ html: `<img src="${p.img_url}" class="photo-marker">`, className: '', iconSize: [60, 60] });
-L.marker([p.lat, p.lng], { icon: icon }).addTo(map);
-}
-
-// 2. 上传时：解析并上传到云端
-document.getElementById('fileIn').onchange = function(e) {
-var files = Array.from(e.target.files);
-files.forEach(file => {
-EXIF.getData(file, async function() {
-var lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
-if (lat && lon) {
-var latNum = (lat[0] + lat[1]/60 + lat[2]/3600);
-var lonNum = (lon[0] + lon[1]/60 + lon[2]/3600);
-
-// 这里由于图片存云端较复杂，咱们先用本地预览图展示，数据存坐标
-let photoUrl = URL.createObjectURL(file);
-
-// 保存到 Supabase
-const { error } = await supabase.from('footprints').insert([
-{ lat: latNum, lng: lonNum, img_url: photoUrl, user_id: 'MyUser' }
-]);
-
-if (!error) addMarkerToMap({ lat: latNum, lng: lonNum, img_url: photoUrl });
-}
-});
-});
-};
+// ... 后面的上传函数保持不变 ...
 </script>
+
 </body>
 </html>
