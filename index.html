@@ -2,23 +2,23 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>彩虹岁月·终极修复版</title>
+<title>彩虹岁月·全端通杀版</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <link rel="stylesheet" href="https://cdn.staticfile.net/leaflet/1.9.4/leaflet.css" />
 <style>
-body, html, #map { margin:0; height:100%; width:100%; background: #000b1a; }
+body, html, #map { margin:0; height:100%; width:100%; background: #000; overflow: hidden; }
 .ui-panel { position:fixed; z-index:9999; bottom:20px; left:50%; transform:translateX(-50%); display: flex; gap: 8px; width: 95%; justify-content: center; }
 button { padding: 10px 14px; color: white; border: none; border-radius: 20px; font-weight: bold; background: linear-gradient(135deg, #667eea, #764ba2); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .photo-marker-icon { border: 2px solid white; border-radius: 8px; width:90px; height:90px; object-fit:cover; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
 .top-ui { position: fixed; top: 15px; left: 15px; z-index: 10000; display: flex; gap: 10px; }
-.status-tag { padding: 5px 12px; background: rgba(0,0,0,0.5); border-radius: 15px; color: white; font-size: 12px; backdrop-filter: blur(5px); }
+.status-tag { padding: 5px 12px; background: rgba(0,0,0,0.7); border-radius: 15px; color: white; font-size: 12px; }
 </style>
 </head>
 <body>
 
 <div class="top-ui">
 <div class="status-tag" id="musicBtn">🎶 <span id="mTxt">播放音乐</span></div>
-<div class="status-tag" id="loadStatus">🚀 准备启动...</div>
+<div class="status-tag" id="loadStatus">🚦 初始化中...</div>
 </div>
 <audio id="bgm" loop></audio>
 
@@ -53,65 +53,66 @@ localStorage.setItem('my_footprint_id', id);
 return id;
 })();
 
-function init() {
-console.log("启动初始化...");
-// 强制先渲染地图，哪怕数据库还没连上
+function startApp() {
+// 1. 地图初始化（换成更稳的国内 CDN 底图节点）
 map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([34, 108], 4);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-// 延迟 1 秒再执行数据库逻辑，防止安卓/电脑加载阻塞
+// 使用智图高德风格底图，国内加载最稳
+L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}', {
+subdomains: ["1", "2", "3", "4"],
+crossOrigin: true
+}).addTo(map);
+
+// 2. 数据库与数据加载
 setTimeout(async () => {
 try {
 _db = supabase.createClient(SB_URL, SB_KEY);
 document.getElementById('bgm').src = BGM_URL;
-await loadHistory();
+loadHistory();
 } catch (e) {
-console.error("数据库连接失败", e);
-document.getElementById('loadStatus').innerText = "网络异常";
+document.getElementById('loadStatus').innerText = "📡 连接失败";
 }
-}, 1000);
+}, 500);
 }
 
 async function loadHistory() {
 const status = document.getElementById('loadStatus');
-status.innerText = "🚀 同步足迹中...";
+status.innerText = "🎞️ 载入中...";
 
 const { data, error } = await _db.from('footprints').select('*').eq('user_id', myID).order('created_at', { ascending: true });
 
 if (error || !data || data.length === 0) {
-status.innerText = "✨ 暂无足迹，请点击添加";
-setTimeout(() => status.style.display = 'none', 3000);
+status.innerText = "✨ 传张照片开始旅程";
 return;
 }
 
-status.innerText = "🎞️ 轨迹重演中...";
+status.innerText = "🌈 轨迹回放";
 let lastPoint = null;
 for (let p of data) {
 const currentPoint = [p.lat, p.lng];
-map.flyTo(currentPoint, 11, { animate: true, duration: 1 });
-await new Promise(r => setTimeout(r, 1100));
+map.flyTo(currentPoint, 11, { animate: true, duration: 1.2 });
+await new Promise(r => setTimeout(r, 1300));
 
-// 下落照片
+// 落地照片
 L.circleMarker(currentPoint, { radius: 5, color: "#00BFFF", fillColor: "#fff", fillOpacity: 1 }).addTo(map);
 if (p.img_url) {
-L.marker(currentPoint, {
-icon: L.divIcon({
+const icon = L.divIcon({
 html: `<img src="${p.img_url}" class="photo-marker-icon">`,
 iconSize: [90, 90], iconAnchor: [45, 90]
-})
-}).addTo(map);
+});
+L.marker(currentPoint, {icon: icon}).addTo(map);
 }
 
 if (lastPoint) {
 L.polyline.antPath([lastPoint, currentPoint], { delay: 600, weight: 7, color: "#00BFFF" }).addTo(map);
 }
 lastPoint = currentPoint;
-await new Promise(r => setTimeout(r, 600));
+await new Promise(r => setTimeout(r, 800));
 }
 status.style.display = 'none';
 }
 
-// 分享、上传、音乐等功能保持不变，但增加 try-catch 保护
+// 音乐及上传逻辑同步方案 B
 document.getElementById('musicBtn').onclick = () => {
 const bgm = document.getElementById('bgm');
 if (bgm.paused) { bgm.play(); document.getElementById('mTxt').innerText = "暂停"; }
@@ -131,9 +132,10 @@ canvas.getContext('2d').drawImage(img, 0, 0, 400, 400);
 const miniData = canvas.toDataURL('image/jpeg', 0.6);
 EXIF.getData(file, async function() {
 const lat = EXIF.getTag(this, "GPSLatitude"), lon = EXIF.getTag(this, "GPSLongitude");
+const latR = EXIF.getTag(this, "GPSLatitudeRef"), lonR = EXIF.getTag(this, "GPSLongitudeRef");
 if (lat && lon) {
-const latN = lat[0] + lat[1]/60 + lat[2]/3600;
-const lonN = lon[0] + lon[1]/60 + lon[2]/3600;
+const latN = (lat[0] + lat[1]/60 + lat[2]/3600) * (latR === "S" ? -1 : 1);
+const lonN = (lon[0] + lon[1]/60 + lon[2]/3600) * (lonR === "W" ? -1 : 1);
 await _db.from('footprints').insert([{ lat: latN, lng: lonN, img_url: miniData, user_id: myID }]);
 }
 if(file === files[files.length-1]) location.reload();
@@ -148,12 +150,21 @@ reader.readAsDataURL(file);
 async function clearAll() {
 if(confirm("确定清空吗？")) {
 await _db.from('footprints').delete().eq('user_id', myID);
+localStorage.removeItem('my_footprint_id'); // 彻底重置身份
 location.reload();
 }
 }
 
-// 启动
-window.onload = init;
+async function openShare() {
+html2canvas(document.body, { useCORS: true }).then(canvas => {
+const a = document.createElement('a');
+a.href = canvas.toDataURL();
+a.download = 'footprint.png';
+a.click();
+});
+}
+
+window.onload = startApp;
 </script>
 </body>
 </html>
